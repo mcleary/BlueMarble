@@ -22,8 +22,16 @@ public:
 	glm::vec3 Direction = { 0.0f, 0.0f, -1.0f };
 	glm::vec3 Up = { 0.0f, 1.0f, 0.0f };
 
+    bool bIsOrtho = false;
+
 	float FieldOfView = glm::radians(45.0f);
-	float AspectRatio = 4.0f / 3.0f;
-	float Near = 0.01f;
-	float Far = 1000.0f;
+	float AspectRatio = 1.0f;
+
+    float Left = 0.0f;
+    float Right = 1280.0f;
+    float Bottom = 0.0f;
+    float Top = 720.0f;
+
+    float Near = 0.01f;
+    float Far = 1000.0f;
 };

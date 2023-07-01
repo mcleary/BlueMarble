@@ -47,6 +47,11 @@ void SimpleCamera::Update(float DeltaTime)
 void SimpleCamera::SetViewportSize(std::int32_t Width, std::int32_t Height)
 {
     AspectRatio = static_cast<float>(Width) / static_cast<float>(Height);
+
+    Left = 0.0f;
+    Right = static_cast<float>(Width);
+    Bottom = 0.0f;
+    Top = static_cast<float>(Height);
 }
 
 glm::mat4 SimpleCamera::GetView()
@@ -57,6 +62,16 @@ glm::mat4 SimpleCamera::GetView()
 glm::mat4 SimpleCamera::GetViewProjection()
 {
 	glm::mat4 View = GetView();
-	glm::mat4 Projection = glm::perspective(FieldOfView, AspectRatio, Near, Far);
+	glm::mat4 Projection;
+
+    if (bIsOrtho)
+    {
+        Projection = glm::ortho(Left, Right, Bottom, Top, Near, Far);
+    }
+    else
+    {
+        Projection = glm::perspective(FieldOfView, AspectRatio, Near, Far);
+    }
+
 	return Projection * View;
 }

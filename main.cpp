@@ -17,14 +17,13 @@
 #include "Camera.h"
 
 GLFWwindow* Window = nullptr;
-constexpr std::int32_t WindowWidth = 1280;
-constexpr std::int32_t WindowHeight = 720;
+std::int32_t WindowWidth = 1280;
+std::int32_t WindowHeight = 720;
 
 struct Vertex
 {
     glm::vec3 Position;
     glm::vec3 Normal;
-    glm::vec3 Color;
     glm::vec2 UV;
 };
 
@@ -35,13 +34,8 @@ struct Triangle
     GLuint V2;
 };
 
-struct DirectionalLight
-{
-    glm::vec3 Direction;
-    GLfloat Intensity;
-};
-
 SimpleCamera Camera;
+glm::vec3 LightPosition = { 0.0f, 0.0f, 10.0f };
 
 void GenerateSphere(GLuint Resolution, std::vector<Vertex>& Vertices, std::vector<Triangle>& Indices)
 {
@@ -71,12 +65,7 @@ void GenerateSphere(GLuint Resolution, std::vector<Vertex>& Vertices, std::vecto
 
             glm::vec3 VertexNormal = glm::normalize(VertexPosition);
 
-            Vertices.push_back(Vertex{
-                VertexPosition,
-                VertexNormal,
-                glm::vec3{ 1.0f, 1.0f, 1.0f },
-                glm::vec2{ 1.0f - U, 1.0f - V }
-                               });
+            Vertices.emplace_back(Vertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = glm::vec2{ 1.0f - U, 1.0f - V } });
         }
     }
 
@@ -225,8 +214,6 @@ GLuint LoadTexture(const char* TextureFile)
 
 void MouseButtonCallback(GLFWwindow* Window, int Button, int Action, int Modifiers)
 {
-    // std::cout << "Button: " << Button << " Action: " << Action << " Modifiers: " << Modifiers << std::endl;
-
     if (Button == GLFW_MOUSE_BUTTON_LEFT)
     {
         if (Action == GLFW_PRESS)
@@ -251,6 +238,9 @@ void MouseButtonCallback(GLFWwindow* Window, int Button, int Action, int Modifie
 void MouseMotionCallback(GLFWwindow* Window, double X, double Y)
 {
     Camera.MouseMove(static_cast<float>(X), static_cast<float>(Y));
+
+    LightPosition.x = X;
+    LightPosition.y = WindowHeight - Y;
 }
 
 void KeyCallback(GLFWwindow* Window, std::int32_t Key, std::int32_t ScanCode, std::int32_t Action, std::int32_t Modifers)
@@ -307,6 +297,10 @@ void KeyCallback(GLFWwindow* Window, std::int32_t Key, std::int32_t ScanCode, st
                 Camera.MoveRight(0.0f);
                 break;
 
+            case GLFW_KEY_O:
+                Camera.bIsOrtho = !Camera.bIsOrtho;
+                break;
+
             default:
                 break;
         }
@@ -315,82 +309,92 @@ void KeyCallback(GLFWwindow* Window, std::int32_t Key, std::int32_t ScanCode, st
 
 void ResizeCallback(GLFWwindow* Window, std::int32_t Width, std::int32_t Height)
 {
+    WindowWidth = Width;
+    WindowHeight = Height;
+
     Camera.SetViewportSize(Width, Height);
 
     glViewport(0, 0, Width, Height);
 }
 
-void BlueMarbleScene()
+void OrthoScene()
 {
+    Camera.bIsOrtho = true;
+
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glEnable(GL_CULL_FACE);
 
     // Compilar o vertex e o fragment shader
-    GLuint ProgramId = LoadShaders("shaders/triangle_vert.glsl", "shaders/triangle_frag.glsl");
+    GLuint ProgramId = LoadShaders("../../../shaders/triangle_vert.glsl", "../../../shaders/triangle_frag.glsl");
 
-    // Gera a Geometria da esfera e copia os dados para a GPU (memória da placa de vídeo)
-    std::vector<Vertex> SphereVertices;
-    std::vector<Triangle> SphereIndices;
-    GenerateSphere(100, SphereVertices, SphereIndices);
+    constexpr glm::vec3 Normal = { 0.0f, 0.0f, 1.0f };
+    std::vector<Vertex> Vertices =
+    {
+        Vertex{ .Position = { 0.0f, 0.0f, 0.0f },                   .Normal = Normal, .UV = { 0.0f, 0.0f } },
+        Vertex{ .Position = { WindowWidth, 0.0f, 0.0f },            .Normal = Normal, .UV = { 1.0f, 0.0f } },
+        Vertex{ .Position = { WindowWidth, WindowHeight, 0.0f },    .Normal = Normal, .UV = { 1.0f, 1.0f } },
+        Vertex{ .Position = { 0.0f, WindowHeight, 0.0f },           .Normal = Normal, .UV = { 0.0f, 1.0f } },
+    };
+    std::vector<Triangle> Indices =
+    {
+        Triangle{ 0, 1, 2 },
+        Triangle{ 2, 3, 0 },
+    };
 
-    const std::int32_t NumTriangles = static_cast<std::int32_t>(SphereIndices.size());
+    const std::int32_t NumTriangles = static_cast<std::int32_t>(Indices.size());
 
     // Copia os dados da esfera para a GPU
-    GLuint SphereVertexBuffer, SphereElementBuffer;
-    glGenBuffers(1, &SphereVertexBuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, SphereVertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER, SphereVertices.size() * sizeof(Vertex), SphereVertices.data(), GL_STATIC_DRAW);
+    GLuint VertexBuffer, ElementBuffer;
+    glGenBuffers(1, &VertexBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
+    glBufferData(GL_ARRAY_BUFFER, Vertices.size() * sizeof(Vertex), Vertices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    glGenBuffers(1, &SphereElementBuffer);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, SphereElementBuffer);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, SphereIndices.size() * sizeof(Triangle), SphereIndices.data(), GL_STATIC_DRAW);
+    glGenBuffers(1, &ElementBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ElementBuffer);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, Indices.size() * sizeof(Triangle), Indices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     // Não precisa mais manter o vetor na CPU
-    SphereIndices.clear();
-    SphereVertices.clear();
+    Vertices.clear();
+    Indices.clear();
 
     // Gerar o identificador do VAO
     // Identificador do Vertex Array Object (VAO)
-    GLuint SphereVAO;
-    glGenVertexArrays(1, &SphereVAO);
-    glBindVertexArray(SphereVAO);
+    GLuint VAO;
+    glGenVertexArrays(1, &VAO);
+    glBindVertexArray(VAO);
 
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
-    glEnableVertexAttribArray(3);
 
     // Diz para o OpenGL que o VertexBuffer vai ficar associado ao atributo 0
     // glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, SphereVertexBuffer);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, SphereElementBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ElementBuffer);
 
     // Informa ao OpenGL onde, dentro do VertexBuffer, os vértices estão. No
     // nosso caso o array Triangles é tudo o que a gente precisa
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, Normal)));
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, Color)));
-    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, UV)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, UV)));
 
     // Disabilitar o VAO
     glBindVertexArray(0);
 
-    // Criar uma fonte de luz direcional
-    DirectionalLight Light;
-    Light.Direction = glm::vec3(0.0f, 0.0f, -1.0f);
-    Light.Intensity = 1.0f;
+    // Criar uma fonte de luz pontual
+    constexpr float LightIntensity = 1.0f;
 
-    glm::mat4 ModelMatrix = glm::rotate(glm::identity<glm::mat4>(), glm::radians(90.0f), glm::vec3{ 1.0f, 0.0f, 0.0f });
+    constexpr glm::mat4 ModelMatrix = glm::identity<glm::mat4>();
 
     // Carregar a Textura para a Memória de Vídeo
     GLuint EarthTextureId = LoadTexture("textures/earth_2k.jpg");
     GLuint CloudsTextureId = LoadTexture("textures/earth_clouds_2k.jpg");
 
     // Configura a cor de fundo
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0);
+    glClearColor(0.3f, 0.3f, 0.3f, 1.0);
 
     Camera.SetViewportSize(WindowWidth, WindowHeight);
 
@@ -428,12 +432,12 @@ void BlueMarbleScene()
         glUniformMatrix4fv(ModelViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ModelViewProjectionMatrix));
 
         GLint LightIntensityLoc = glGetUniformLocation(ProgramId, "LightIntensity");
-        glUniform1f(LightIntensityLoc, Light.Intensity);
+        glUniform1f(LightIntensityLoc, LightIntensity);
 
-        glm::vec4 LightDirectionViewSpace = ViewMatrix * glm::vec4{ Light.Direction, 0.0f };
+        glm::vec4 LightPositionViewSpace = ViewMatrix * glm::vec4{ LightPosition, 1.0f };
 
-        GLint LightDirectionLoc = glGetUniformLocation(ProgramId, "LightDirection");
-        glUniform3fv(LightDirectionLoc, 1, glm::value_ptr(LightDirectionViewSpace));
+        GLint LightPositionLoc = glGetUniformLocation(ProgramId, "LightPosition");
+        glUniform3fv(LightPositionLoc, 1, glm::value_ptr(LightPositionViewSpace));
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, EarthTextureId);
@@ -447,8 +451,8 @@ void BlueMarbleScene()
         GLint CloudsTextureSamplerLoc = glGetUniformLocation(ProgramId, "CloudsTexture");
         glUniform1i(CloudsTextureSamplerLoc, 1);
 
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        glBindVertexArray(SphereVAO);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINES);
+        glBindVertexArray(VAO);
         glDrawElements(GL_TRIANGLES, NumTriangles * 3, GL_UNSIGNED_INT, nullptr);
         glBindVertexArray(0);
 
@@ -456,9 +460,9 @@ void BlueMarbleScene()
         glfwSwapBuffers(Window);
     }
 
-    glDeleteBuffers(1, &SphereElementBuffer);
-    glDeleteBuffers(1, &SphereVertexBuffer);
-    glDeleteVertexArrays(1, &SphereVAO);
+    glDeleteBuffers(1, &ElementBuffer);
+    glDeleteBuffers(1, &VertexBuffer);
+    glDeleteVertexArrays(1, &VAO);
     glDeleteProgram(ProgramId);
     glDeleteTextures(1, &EarthTextureId);
 }
@@ -507,7 +511,8 @@ int main()
     std::cout << "OpenGL Version  : " << glGetString(GL_VERSION) << std::endl;
     std::cout << "GLSL Version    : " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
 
-    BlueMarbleScene();
+    // BlueMarbleScene();
+    OrthoScene();
 
     glfwDestroyWindow(Window);
     glfwTerminate();

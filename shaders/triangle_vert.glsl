@@ -2,8 +2,7 @@
 
 layout(location = 0) in vec3 InPosition;
 layout(location = 1) in vec3 InNormal;
-layout(location = 2) in vec3 InColor;
-layout(location = 3) in vec2 InUV;
+layout(location = 2) in vec2 InUV;
 
 uniform mat4 NormalMatrix;
 uniform mat4 ModelViewMatrix;
@@ -20,7 +19,7 @@ void main()
 
     Position = ViewPosition.xyz / ViewPosition.w;
     Normal = vec3(NormalMatrix * vec4(InNormal, 0.0));
-    Color = InColor;
     UV = InUV;
+
     gl_Position = ModelViewProjection * vec4(InPosition, 1.0);
 }
