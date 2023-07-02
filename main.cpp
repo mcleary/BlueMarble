@@ -55,6 +55,11 @@ struct RenderData
     GLuint NumTriangles;
 };
 
+struct InstancedRenderData : public RenderData
+{
+    GLuint NumInstances;
+};
+
 // Configurações Iniciais
 GLFWwindow* Window = nullptr;
 std::int32_t WindowWidth = 1920;
@@ -138,6 +143,41 @@ Geometry GenerateQuad()
     };
 
     return QuadGeometry;
+}
+
+std::vector<glm::mat4> GenerateInstances(GLuint InNumInstances)
+{
+    std::vector<glm::mat4> ModelMatrices;
+    ModelMatrices.reserve(InNumInstances);
+
+    float Radius = 10.0;
+    float Offset = 2.f;
+    for (std::uint32_t Index = 0; Index < InNumInstances; ++Index)
+    {
+        glm::mat4 model = glm::identity<glm::mat4>();
+
+        // 1. translation: displace along circle with 'radius' in range [-offset, offset]
+        float angle = (float)Index / (float)InNumInstances * 360.0f;
+        float displacement = (rand() % (int)(2 * Offset * 100)) / 100.0f - Offset;
+        float x = sin(angle) * InNumInstances + displacement;
+        displacement = (rand() % (int)(2 * Offset * 100)) / 100.0f - Offset;
+        float y = displacement * 0.4f; // keep height of field smaller compared to width of x and z
+        displacement = (rand() % (int)(2 * Offset * 100)) / 100.0f - Offset;
+        float z = cos(angle) * Radius + displacement;
+        model = glm::translate(model, glm::vec3(x, y, z));
+
+        // 2. scale: scale between 0.05 and 0.25f
+        float scale = (rand() % 20) / 100.0f + 0.05;
+        model = glm::scale(model, glm::vec3(scale));
+
+        // 3. rotation: add random rotation around a (semi)randomly picked rotation axis vector
+        float rotAngle = (rand() % 360);
+        model = glm::rotate(model, rotAngle, glm::vec3(0.4f, 0.6f, 0.8f));
+
+        ModelMatrices.emplace_back(model);
+    }
+
+    return ModelMatrices;
 }
 
 std::string ReadFile(const char* FilePath)
@@ -442,6 +482,72 @@ RenderData GetRenderData()
     return GeoRenderData;
 }
 
+InstancedRenderData GetInstancedRenderData()
+{
+    Geometry Geo = GenerateSphere(10);
+    std::vector<glm::mat4> Instances = GenerateInstances(1000);
+
+    GLuint VertexBuffer, ElementBuffer;
+    glGenBuffers(1, &VertexBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
+    glBufferData(GL_ARRAY_BUFFER, Geo.Vertices.size() * sizeof(Vertex), Geo.Vertices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glGenBuffers(1, &ElementBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ElementBuffer);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, Geo.Indices.size() * sizeof(Triangle), Geo.Indices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+    GLuint InstancesBuffer;
+    glGenBuffers(1, &InstancesBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, InstancesBuffer);
+    glBufferData(GL_ARRAY_BUFFER, Instances.size() * sizeof(glm::mat4), &Instances[0], GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    GLuint InstanceVAO;
+    glGenVertexArrays(1, &InstanceVAO);
+    glBindVertexArray(InstanceVAO);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ElementBuffer);
+
+    // Faz o bind do VertexBuffer e configura o layout dos atributos 0, 1 e 2
+    glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
+
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glEnableVertexAttribArray(2);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, Normal)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, UV)));
+
+    // configura o array de matrizes nos atributos 3, 4, 5, 6
+    glBindBuffer(GL_ARRAY_BUFFER, InstancesBuffer);
+
+    glEnableVertexAttribArray(3);
+    glEnableVertexAttribArray(4);
+    glEnableVertexAttribArray(5);
+    glEnableVertexAttribArray(6);
+
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)0);
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4)));
+    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(2 * sizeof(glm::vec4)));
+    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(3 * sizeof(glm::vec4)));
+
+    glVertexAttribDivisor(3, 1);
+    glVertexAttribDivisor(4, 1);
+    glVertexAttribDivisor(5, 1);
+    glVertexAttribDivisor(6, 1);
+
+    glBindVertexArray(0);
+
+    InstancedRenderData InstRenderData;
+    InstRenderData.VAO = InstanceVAO;
+    InstRenderData.NumInstances = Instances.size();
+    InstRenderData.NumTriangles = Geo.Indices.size();
+    return InstRenderData;
+}
+
 int main()
 {
     if (!glfwInit())
@@ -488,8 +594,10 @@ int main()
 
     // Compilar o vertex e o fragment shader
     GLuint ProgramId = LoadShaders("shaders/triangle_vert.glsl", "shaders/triangle_frag.glsl");
+    GLuint InstancedProgramId = LoadShaders("shaders/instanced_vert.glsl", "shaders/instanced_frag.glsl");
 
     RenderData GeoRenderData = GetRenderData();
+    InstancedRenderData InstRenderData= GetInstancedRenderData();
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -503,8 +611,6 @@ int main()
     glClearColor(0.3f, 0.3f, 0.3f, 1.0);
 
     Camera.SetViewportSize(WindowWidth, WindowHeight);
-
-    constexpr glm::mat4 ModelMatrix = glm::identity<glm::mat4>();
 
     double PreviousTime = glfwGetTime();
 
@@ -522,43 +628,68 @@ int main()
 
         glUseProgram(ProgramId);
 
-        const glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ModelMatrix));
-        const glm::mat4 ModelViewProjectionMatrix = Camera.GetViewProjection() * ModelMatrix;
+        glm::mat4 ModelMatrix = glm::identity<glm::mat4>();
+        glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ModelMatrix));
+        glm::mat4 ViewMatrix = Camera.GetView();
+        glm::mat4 ViewProjection = Camera.GetViewProjection();
+        glm::mat4 ModelViewProjectionMatrix = ViewProjection * ModelMatrix;
 
-        GLint TimeLoc = glGetUniformLocation(ProgramId, "Time");
-        glUniform1f(TimeLoc, static_cast<GLfloat>(CurrentTime));
+        {
+            GLint TimeLoc = glGetUniformLocation(ProgramId, "Time");
+            glUniform1f(TimeLoc, static_cast<GLfloat>(CurrentTime));
 
-        GLint NormalMatrixLoc = glGetUniformLocation(ProgramId, "NormalMatrix");
-        glUniformMatrix4fv(NormalMatrixLoc, 1, GL_FALSE, glm::value_ptr(NormalMatrix));
+            GLint NormalMatrixLoc = glGetUniformLocation(ProgramId, "NormalMatrix");
+            glUniformMatrix4fv(NormalMatrixLoc, 1, GL_FALSE, glm::value_ptr(NormalMatrix));
 
-        GLint ModelViewMatrixLoc = glGetUniformLocation(ProgramId, "ModelMatrix");
-        glUniformMatrix4fv(ModelViewMatrixLoc, 1, GL_FALSE, glm::value_ptr(ModelMatrix));
+            GLint ModelViewMatrixLoc = glGetUniformLocation(ProgramId, "ModelMatrix");
+            glUniformMatrix4fv(ModelViewMatrixLoc, 1, GL_FALSE, glm::value_ptr(ModelMatrix));
 
-        GLint ModelViewProjectionLoc = glGetUniformLocation(ProgramId, "ModelViewProjection");
-        glUniformMatrix4fv(ModelViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ModelViewProjectionMatrix));
+            GLint ModelViewProjectionLoc = glGetUniformLocation(ProgramId, "ModelViewProjection");
+            glUniformMatrix4fv(ModelViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ModelViewProjectionMatrix));
 
-        GLint LightIntensityLoc = glGetUniformLocation(ProgramId, "Light.Intensity");
-        glUniform1f(LightIntensityLoc, Light.Intensity);
+            GLint LightIntensityLoc = glGetUniformLocation(ProgramId, "Light.Intensity");
+            glUniform1f(LightIntensityLoc, Light.Intensity);
 
-        GLint LightPositionLoc = glGetUniformLocation(ProgramId, "Light.Position");
-        glUniform3fv(LightPositionLoc, 1, glm::value_ptr(Light.Position));
+            GLint LightPositionLoc = glGetUniformLocation(ProgramId, "Light.Position");
+            glUniform3fv(LightPositionLoc, 1, glm::value_ptr(Light.Position));
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, EarthTextureId);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, EarthTextureId);
 
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, CloudsTextureId);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, CloudsTextureId);
 
-        GLint TextureSamplerLoc = glGetUniformLocation(ProgramId, "EarthTexture");
-        glUniform1i(TextureSamplerLoc, 0);
+            GLint TextureSamplerLoc = glGetUniformLocation(ProgramId, "EarthTexture");
+            glUniform1i(TextureSamplerLoc, 0);
 
-        GLint CloudsTextureSamplerLoc = glGetUniformLocation(ProgramId, "CloudsTexture");
-        glUniform1i(CloudsTextureSamplerLoc, 1);
+            GLint CloudsTextureSamplerLoc = glGetUniformLocation(ProgramId, "CloudsTexture");
+            glUniform1i(CloudsTextureSamplerLoc, 1);
 
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINES);
-        glBindVertexArray(GeoRenderData.VAO);
-        glDrawElements(GL_TRIANGLES, GeoRenderData.NumTriangles * 3, GL_UNSIGNED_INT, nullptr);
-        glBindVertexArray(0);
+            glBindVertexArray(GeoRenderData.VAO);
+            glDrawElements(GL_TRIANGLES, GeoRenderData.NumTriangles * 3, GL_UNSIGNED_INT, nullptr);
+            glBindVertexArray(0);
+        }
+
+        {
+            // Render Instanced Data
+            glUseProgram(InstancedProgramId);
+
+            GLuint TimeLoc = glGetUniformLocation(InstancedProgramId, "Time");
+            glUniform1f(TimeLoc, static_cast<GLfloat>(CurrentTime));
+
+            GLuint TextureSamplerLoc = glGetUniformLocation(InstancedProgramId, "EarthTexture");
+            glUniform1i(TextureSamplerLoc, 0);
+
+            GLuint CloudsTextureSamplerLoc = glGetUniformLocation(InstancedProgramId, "CloudsTexture");
+            glUniform1i(CloudsTextureSamplerLoc, 1);
+
+            GLint ViewProjectionLoc = glGetUniformLocation(InstancedProgramId, "ViewProjection");
+            glUniformMatrix4fv(ViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ViewProjection));
+
+            glBindVertexArray(InstRenderData.VAO);
+            glDrawElementsInstanced(GL_TRIANGLES, InstRenderData.NumInstances * 3, GL_UNSIGNED_INT, nullptr, InstRenderData.NumInstances);
+            glBindVertexArray(0);
+        }
 
         glfwPollEvents();
         glfwSwapBuffers(Window);
