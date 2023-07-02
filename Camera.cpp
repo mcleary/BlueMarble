@@ -3,6 +3,11 @@
 
 #include <glm/ext.hpp>
 
+SimpleCamera::SimpleCamera()
+{
+    Reset();
+}
+
 void SimpleCamera::MoveForward(float Scale)
 {
 	ForwardScale = Scale;
@@ -44,14 +49,21 @@ void SimpleCamera::Update(float DeltaTime)
 	Location += Right * RightScale * DeltaTime;
 }
 
+void SimpleCamera::Reset()
+{
+    Location = { 0.0f, 0.0f, 5.0f };
+    Direction = { 0.0f, 0.0f, -1.0f };
+    Up = { 0.0f, 1.0f, 0.0f };
+}
+
 void SimpleCamera::SetViewportSize(std::int32_t Width, std::int32_t Height)
 {
     AspectRatio = static_cast<float>(Width) / static_cast<float>(Height);
 
     Left = 0.0f;
-    Right = static_cast<float>(Width);
+    Right = 1.0f;
     Bottom = 0.0f;
-    Top = static_cast<float>(Height);
+    Top = 1.0f;
 }
 
 glm::mat4 SimpleCamera::GetView()

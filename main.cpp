@@ -57,11 +57,10 @@ struct RenderData
 
 // Configurações Iniciais
 GLFWwindow* Window = nullptr;
-std::int32_t WindowWidth = 1280;
-std::int32_t WindowHeight = 720;
-SceneType Scene = SceneType::Ortho;
+std::int32_t WindowWidth = 1920;
+std::int32_t WindowHeight = 1080;
+SceneType Scene = SceneType::BlueMarble;
 SimpleCamera Camera;
-glm::vec3 LightPosition = { 0.0f, 0.0f, 10.0f };
 constexpr GLuint SphereResolution = 100;
 FLight Light;
 
@@ -127,10 +126,10 @@ Geometry GenerateQuad()
     constexpr glm::vec3 Normal = { 0.0f, 0.0f, 1.0f };
     QuadGeometry.Vertices =
     {
-        Vertex{.Position = { 0.0f, 0.0f, 0.0f },                   .Normal = Normal, .UV = { 0.0f, 1.0f } },
-        Vertex{.Position = { WindowWidth, 0.0f, 0.0f },            .Normal = Normal, .UV = { 1.0f, 1.0f } },
-        Vertex{.Position = { WindowWidth, WindowHeight, 0.0f },    .Normal = Normal, .UV = { 1.0f, 0.0f } },
-        Vertex{.Position = { 0.0f, WindowHeight, 0.0f },           .Normal = Normal, .UV = { 0.0f, 0.0f } },
+        Vertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Normal = Normal, .UV = { 0.0f, 1.0f } },
+        Vertex{ .Position = { 1.0f, 0.0f, 0.0f }, .Normal = Normal, .UV = { 1.0f, 1.0f } },
+        Vertex{ .Position = { 1.0f, 1.0f, 0.0f }, .Normal = Normal, .UV = { 1.0f, 0.0f } },
+        Vertex{ .Position = { 0.0f, 1.0f, 0.0f }, .Normal = Normal, .UV = { 0.0f, 0.0f } },
     };
     QuadGeometry.Indices =
     {
@@ -298,8 +297,8 @@ void MouseMotionCallback(GLFWwindow* Window, double X, double Y)
 
     if (Scene == SceneType::Ortho)
     {
-        LightPosition.x = static_cast<float>(X);
-        LightPosition.y = static_cast<float>(WindowHeight - Y);
+        Light.Position.x = static_cast<float>(X) / WindowWidth;
+        Light.Position.y = static_cast<float>(WindowHeight - Y) / WindowHeight;
     }
 }
 
@@ -361,6 +360,10 @@ void KeyCallback(GLFWwindow* Window, std::int32_t Key, std::int32_t ScanCode, st
                 Camera.bIsOrtho = !Camera.bIsOrtho;
                 break;
 
+            case GLFW_KEY_R:
+                Camera.Reset();
+                break;
+
             default:
                 break;
         }
@@ -393,8 +396,8 @@ RenderData GetRenderData()
         case SceneType::Ortho:
             Geo = GenerateQuad();
             Camera.bIsOrtho = true;
-            Light.Position = glm::vec3(0.0f, 0.0f, 200.0f);
-            Light.Intensity = 5.0f;
+            Light.Position = glm::vec3(0.0f, 0.0f, 0.05f);
+            Light.Intensity = 1.0f;
             break;
 
         default:
@@ -519,9 +522,7 @@ int main()
 
         glUseProgram(ProgramId);
 
-        const glm::mat4 ViewMatrix = Camera.GetView();
-        const glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ViewMatrix * ModelMatrix));
-        const glm::mat4 ModelViewMatrix = ViewMatrix * ModelMatrix;
+        const glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ModelMatrix));
         const glm::mat4 ModelViewProjectionMatrix = Camera.GetViewProjection() * ModelMatrix;
 
         GLint TimeLoc = glGetUniformLocation(ProgramId, "Time");
@@ -530,8 +531,8 @@ int main()
         GLint NormalMatrixLoc = glGetUniformLocation(ProgramId, "NormalMatrix");
         glUniformMatrix4fv(NormalMatrixLoc, 1, GL_FALSE, glm::value_ptr(NormalMatrix));
 
-        GLint ModelViewMatrixLoc = glGetUniformLocation(ProgramId, "ModelViewMatrix");
-        glUniformMatrix4fv(ModelViewMatrixLoc, 1, GL_FALSE, glm::value_ptr(ModelViewMatrix));
+        GLint ModelViewMatrixLoc = glGetUniformLocation(ProgramId, "ModelMatrix");
+        glUniformMatrix4fv(ModelViewMatrixLoc, 1, GL_FALSE, glm::value_ptr(ModelMatrix));
 
         GLint ModelViewProjectionLoc = glGetUniformLocation(ProgramId, "ModelViewProjection");
         glUniformMatrix4fv(ModelViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ModelViewProjectionMatrix));
@@ -539,10 +540,8 @@ int main()
         GLint LightIntensityLoc = glGetUniformLocation(ProgramId, "Light.Intensity");
         glUniform1f(LightIntensityLoc, Light.Intensity);
 
-        const glm::vec4 LightPositionViewSpace = ViewMatrix * glm::vec4{ LightPosition, 1.0f };
-
         GLint LightPositionLoc = glGetUniformLocation(ProgramId, "Light.Position");
-        glUniform3fv(LightPositionLoc, 1, glm::value_ptr(LightPositionViewSpace));
+        glUniform3fv(LightPositionLoc, 1, glm::value_ptr(Light.Position));
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, EarthTextureId);

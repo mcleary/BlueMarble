@@ -34,7 +34,6 @@ void main()
     float DistanceToLight = distance(Light.Position, Position);
     vec3 SurfaceColor = EarthColor + CloudsColor;
 
-    vec3 AmbientReflection = vec3(0.2, 0.2, 0.2);
     vec3 DiffuseReflection = Lambertian * SurfaceColor * Light.Intensity;
 
     OutColor = vec4(DiffuseReflection, 1.0);

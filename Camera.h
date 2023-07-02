@@ -5,10 +5,13 @@
 class SimpleCamera
 {
 public:
+    SimpleCamera();
+
 	void MoveForward(float Scale);
 	void MoveRight(float Scale);
 	void MouseMove(float X, float Y);
 	void Update(float DeltaTime);
+    void Reset();
     void SetViewportSize(std::int32_t Width, std::int32_t Height);
 	glm::mat4 GetView();
 	glm::mat4 GetViewProjection();
@@ -18,9 +21,9 @@ public:
 	float ForwardScale = 0.0f;
 	float RightScale = 0.0f;
 
-	glm::vec3 Location = { 0.0f, 0.0f, 5.0f };
-	glm::vec3 Direction = { 0.0f, 0.0f, -1.0f };
-	glm::vec3 Up = { 0.0f, 1.0f, 0.0f };
+	glm::vec3 Location;
+	glm::vec3 Direction;
+	glm::vec3 Up;
 
     bool bIsOrtho = false;
 
