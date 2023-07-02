@@ -67,6 +67,7 @@ std::int32_t WindowHeight = 1080;
 SceneType Scene = SceneType::BlueMarble;
 SimpleCamera Camera;
 constexpr GLuint SphereResolution = 100;
+constexpr GLuint NumInstances = 10000;
 FLight Light;
 
 Geometry GenerateSphere(GLuint Resolution)
@@ -485,7 +486,7 @@ RenderData GetRenderData()
 InstancedRenderData GetInstancedRenderData()
 {
     Geometry Geo = GenerateSphere(10);
-    std::vector<glm::mat4> Instances = GenerateInstances(1000);
+    std::vector<glm::mat4> Instances = GenerateInstances(NumInstances);
 
     GLuint VertexBuffer, ElementBuffer;
     glGenBuffers(1, &VertexBuffer);
@@ -608,7 +609,7 @@ int main()
     GLuint CloudsTextureId = LoadTexture("textures/earth_clouds_2k.jpg");
 
     // Configura a cor de fundo
-    glClearColor(0.3f, 0.3f, 0.3f, 1.0);
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0);
 
     Camera.SetViewportSize(WindowWidth, WindowHeight);
 
