@@ -16,9 +16,12 @@
 
 #include "Camera.h"
 
-GLFWwindow* Window = nullptr;
-std::int32_t WindowWidth = 1280;
-std::int32_t WindowHeight = 720;
+
+enum class SceneType
+{
+    BlueMarble,
+    Ortho
+};
 
 struct Vertex
 {
@@ -34,17 +37,45 @@ struct Triangle
     GLuint V2;
 };
 
+struct FLight
+{
+    glm::vec3 Position;
+    float Intensity;
+};
+
+struct Geometry
+{
+    std::vector<Vertex> Vertices;
+    std::vector<Triangle> Indices;
+};
+
+struct RenderData
+{
+    GLuint VAO;
+    GLuint NumTriangles;
+};
+
+// Configurações Iniciais
+GLFWwindow* Window = nullptr;
+std::int32_t WindowWidth = 1280;
+std::int32_t WindowHeight = 720;
+SceneType Scene = SceneType::Ortho;
 SimpleCamera Camera;
 glm::vec3 LightPosition = { 0.0f, 0.0f, 10.0f };
+constexpr GLuint SphereResolution = 100;
+FLight Light;
 
-void GenerateSphere(GLuint Resolution, std::vector<Vertex>& Vertices, std::vector<Triangle>& Indices)
+Geometry GenerateSphere(GLuint Resolution)
 {
-    Vertices.clear();
-    Indices.clear();
+    Geometry SphereGeometry;
 
     constexpr float Pi = glm::pi<float>();
     constexpr float TwoPi = glm::two_pi<float>();
     float InvResolution = 1.0f / static_cast<float>(Resolution - 1);
+
+    const glm::mat4 RotateXAxis = glm::rotate(glm::identity<glm::mat4>(), glm::radians(90.0f), glm::vec3{ 1.0f, 0.0f, 0.0f });
+    const glm::mat4 RotateYAxis = glm::rotate(glm::identity<glm::mat4>(), glm::radians(90.0f), glm::vec3{ 0.0f, 1.0f, 0.0f });
+    const glm::mat4 RotateMatrix = RotateYAxis * RotateXAxis;
 
     for (GLuint UIndex = 0; UIndex < Resolution; ++UIndex)
     {
@@ -56,16 +87,19 @@ void GenerateSphere(GLuint Resolution, std::vector<Vertex>& Vertices, std::vecto
             const float V = VIndex * InvResolution;
             const float Phi = glm::mix(0.0f, Pi, static_cast<float>(V));
 
-            glm::vec3 VertexPosition =
+            glm::vec4 VertexPosition =
             {
                 glm::cos(Theta) * glm::sin(Phi),
                 glm::sin(Theta) * glm::sin(Phi),
-                glm::cos(Phi)
+                glm::cos(Phi),
+                1.0f
             };
+
+            VertexPosition = RotateMatrix * VertexPosition;
 
             glm::vec3 VertexNormal = glm::normalize(VertexPosition);
 
-            Vertices.emplace_back(Vertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = glm::vec2{ 1.0f - U, 1.0f - V } });
+            SphereGeometry.Vertices.emplace_back(Vertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = glm::vec2{ 1.0f - U, 1.0f - V } });
         }
     }
 
@@ -78,10 +112,33 @@ void GenerateSphere(GLuint Resolution, std::vector<Vertex>& Vertices, std::vecto
             GLuint P2 = U + (V + 1) * Resolution;
             GLuint P3 = U + 1 + (V + 1) * Resolution;
 
-            Indices.push_back(Triangle{ P3, P2, P0 });
-            Indices.push_back(Triangle{ P1, P3, P0 });
+            SphereGeometry.Indices.emplace_back(Triangle{ P3, P2, P0 });
+            SphereGeometry.Indices.emplace_back(Triangle{ P1, P3, P0 });
         }
     }
+
+    return SphereGeometry;
+}
+
+Geometry GenerateQuad()
+{
+    Geometry QuadGeometry;
+
+    constexpr glm::vec3 Normal = { 0.0f, 0.0f, 1.0f };
+    QuadGeometry.Vertices =
+    {
+        Vertex{.Position = { 0.0f, 0.0f, 0.0f },                   .Normal = Normal, .UV = { 0.0f, 1.0f } },
+        Vertex{.Position = { WindowWidth, 0.0f, 0.0f },            .Normal = Normal, .UV = { 1.0f, 1.0f } },
+        Vertex{.Position = { WindowWidth, WindowHeight, 0.0f },    .Normal = Normal, .UV = { 1.0f, 0.0f } },
+        Vertex{.Position = { 0.0f, WindowHeight, 0.0f },           .Normal = Normal, .UV = { 0.0f, 0.0f } },
+    };
+    QuadGeometry.Indices =
+    {
+        Triangle{ 0, 1, 2 },
+        Triangle{ 2, 3, 0 },
+    };
+
+    return QuadGeometry;
 }
 
 std::string ReadFile(const char* FilePath)
@@ -212,7 +269,7 @@ GLuint LoadTexture(const char* TextureFile)
     return TextureId;
 }
 
-void MouseButtonCallback(GLFWwindow* Window, int Button, int Action, int Modifiers)
+void MouseButtonCallback(GLFWwindow* Window, std::int32_t Button, std::int32_t Action, std::int32_t Modifiers)
 {
     if (Button == GLFW_MOUSE_BUTTON_LEFT)
     {
@@ -239,8 +296,11 @@ void MouseMotionCallback(GLFWwindow* Window, double X, double Y)
 {
     Camera.MouseMove(static_cast<float>(X), static_cast<float>(Y));
 
-    LightPosition.x = X;
-    LightPosition.y = WindowHeight - Y;
+    if (Scene == SceneType::Ortho)
+    {
+        LightPosition.x = static_cast<float>(X);
+        LightPosition.y = static_cast<float>(WindowHeight - Y);
+    }
 }
 
 void KeyCallback(GLFWwindow* Window, std::int32_t Key, std::int32_t ScanCode, std::int32_t Action, std::int32_t Modifers)
@@ -317,63 +377,55 @@ void ResizeCallback(GLFWwindow* Window, std::int32_t Width, std::int32_t Height)
     glViewport(0, 0, Width, Height);
 }
 
-void OrthoScene()
+RenderData GetRenderData()
 {
-    Camera.bIsOrtho = true;
+    Geometry Geo;
 
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LESS);
-    glEnable(GL_CULL_FACE);
-
-    // Compilar o vertex e o fragment shader
-    GLuint ProgramId = LoadShaders("../../../shaders/triangle_vert.glsl", "../../../shaders/triangle_frag.glsl");
-
-    constexpr glm::vec3 Normal = { 0.0f, 0.0f, 1.0f };
-    std::vector<Vertex> Vertices =
+    switch (Scene)
     {
-        Vertex{ .Position = { 0.0f, 0.0f, 0.0f },                   .Normal = Normal, .UV = { 0.0f, 0.0f } },
-        Vertex{ .Position = { WindowWidth, 0.0f, 0.0f },            .Normal = Normal, .UV = { 1.0f, 0.0f } },
-        Vertex{ .Position = { WindowWidth, WindowHeight, 0.0f },    .Normal = Normal, .UV = { 1.0f, 1.0f } },
-        Vertex{ .Position = { 0.0f, WindowHeight, 0.0f },           .Normal = Normal, .UV = { 0.0f, 1.0f } },
-    };
-    std::vector<Triangle> Indices =
-    {
-        Triangle{ 0, 1, 2 },
-        Triangle{ 2, 3, 0 },
-    };
+        case SceneType::BlueMarble:
+            Geo = GenerateSphere(SphereResolution);
+            Camera.bIsOrtho = false;
+            Light.Position = glm::vec3(0.0f, 0.0f, 1000.0f);
+            Light.Intensity = 1.0f;
+            break;
 
-    const std::int32_t NumTriangles = static_cast<std::int32_t>(Indices.size());
+        case SceneType::Ortho:
+            Geo = GenerateQuad();
+            Camera.bIsOrtho = true;
+            Light.Position = glm::vec3(0.0f, 0.0f, 200.0f);
+            Light.Intensity = 5.0f;
+            break;
 
-    // Copia os dados da esfera para a GPU
+        default:
+            exit(1);
+    }
+
     GLuint VertexBuffer, ElementBuffer;
     glGenBuffers(1, &VertexBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER, Vertices.size() * sizeof(Vertex), Vertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, Geo.Vertices.size() * sizeof(Vertex), Geo.Vertices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     glGenBuffers(1, &ElementBuffer);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ElementBuffer);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, Indices.size() * sizeof(Triangle), Indices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, Geo.Indices.size() * sizeof(Triangle), Geo.Indices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-    // Não precisa mais manter o vetor na CPU
-    Vertices.clear();
-    Indices.clear();
+    RenderData GeoRenderData;
+    GeoRenderData.NumTriangles = (GLuint) Geo.Indices.size();
+
+    glGenVertexArrays(1, &GeoRenderData.VAO);
+    glBindVertexArray(GeoRenderData.VAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ElementBuffer);
 
     // Gerar o identificador do VAO
     // Identificador do Vertex Array Object (VAO)
-    GLuint VAO;
-    glGenVertexArrays(1, &VAO);
-    glBindVertexArray(VAO);
-
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
-
-    // Diz para o OpenGL que o VertexBuffer vai ficar associado ao atributo 0
-    // glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ElementBuffer);
 
     // Informa ao OpenGL onde, dentro do VertexBuffer, os vértices estão. No
     // nosso caso o array Triangles é tudo o que a gente precisa
@@ -384,87 +436,7 @@ void OrthoScene()
     // Disabilitar o VAO
     glBindVertexArray(0);
 
-    // Criar uma fonte de luz pontual
-    constexpr float LightIntensity = 1.0f;
-
-    constexpr glm::mat4 ModelMatrix = glm::identity<glm::mat4>();
-
-    // Carregar a Textura para a Memória de Vídeo
-    GLuint EarthTextureId = LoadTexture("textures/earth_2k.jpg");
-    GLuint CloudsTextureId = LoadTexture("textures/earth_clouds_2k.jpg");
-
-    // Configura a cor de fundo
-    glClearColor(0.3f, 0.3f, 0.3f, 1.0);
-
-    Camera.SetViewportSize(WindowWidth, WindowHeight);
-
-    double PreviousTime = glfwGetTime();
-
-    while (!glfwWindowShouldClose(Window))
-    {
-        double CurrentTime = glfwGetTime();
-        double DeltaTime = CurrentTime - PreviousTime;
-        if (DeltaTime > 0.0)
-        {
-            Camera.Update(static_cast<float>(DeltaTime));
-            PreviousTime = CurrentTime;
-        }
-
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        glUseProgram(ProgramId);
-
-        glm::mat4 ViewMatrix = Camera.GetView();
-        glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ViewMatrix * ModelMatrix));
-        glm::mat4 ModelViewMatrix = ViewMatrix * ModelMatrix;
-        glm::mat4 ModelViewProjectionMatrix = Camera.GetViewProjection() * ModelMatrix;
-
-        GLint TimeLoc = glGetUniformLocation(ProgramId, "Time");
-        glUniform1f(TimeLoc, static_cast<GLfloat>(CurrentTime));
-
-        GLint NormalMatrixLoc = glGetUniformLocation(ProgramId, "NormalMatrix");
-        glUniformMatrix4fv(NormalMatrixLoc, 1, GL_FALSE, glm::value_ptr(NormalMatrix));
-
-        GLint ModelViewMatrixLoc = glGetUniformLocation(ProgramId, "ModelViewMatrix");
-        glUniformMatrix4fv(ModelViewMatrixLoc, 1, GL_FALSE, glm::value_ptr(ModelViewMatrix));
-
-        GLint ModelViewProjectionLoc = glGetUniformLocation(ProgramId, "ModelViewProjection");
-        glUniformMatrix4fv(ModelViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ModelViewProjectionMatrix));
-
-        GLint LightIntensityLoc = glGetUniformLocation(ProgramId, "LightIntensity");
-        glUniform1f(LightIntensityLoc, LightIntensity);
-
-        glm::vec4 LightPositionViewSpace = ViewMatrix * glm::vec4{ LightPosition, 1.0f };
-
-        GLint LightPositionLoc = glGetUniformLocation(ProgramId, "LightPosition");
-        glUniform3fv(LightPositionLoc, 1, glm::value_ptr(LightPositionViewSpace));
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, EarthTextureId);
-
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, CloudsTextureId);
-
-        GLint TextureSamplerLoc = glGetUniformLocation(ProgramId, "EarthTexture");
-        glUniform1i(TextureSamplerLoc, 0);
-
-        GLint CloudsTextureSamplerLoc = glGetUniformLocation(ProgramId, "CloudsTexture");
-        glUniform1i(CloudsTextureSamplerLoc, 1);
-
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINES);
-        glBindVertexArray(VAO);
-        glDrawElements(GL_TRIANGLES, NumTriangles * 3, GL_UNSIGNED_INT, nullptr);
-        glBindVertexArray(0);
-
-        glfwPollEvents();
-        glfwSwapBuffers(Window);
-    }
-
-    glDeleteBuffers(1, &ElementBuffer);
-    glDeleteBuffers(1, &VertexBuffer);
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteProgram(ProgramId);
-    glDeleteTextures(1, &EarthTextureId);
+    return GeoRenderData;
 }
 
 int main()
@@ -511,8 +483,87 @@ int main()
     std::cout << "OpenGL Version  : " << glGetString(GL_VERSION) << std::endl;
     std::cout << "GLSL Version    : " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
 
-    // BlueMarbleScene();
-    OrthoScene();
+    // Compilar o vertex e o fragment shader
+    GLuint ProgramId = LoadShaders("shaders/triangle_vert.glsl", "shaders/triangle_frag.glsl");
+
+    RenderData GeoRenderData = GetRenderData();
+
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glEnable(GL_CULL_FACE);
+
+    // Carregar a Textura para a Memória de Vídeo
+    GLuint EarthTextureId = LoadTexture("textures/earth_2k.jpg");
+    GLuint CloudsTextureId = LoadTexture("textures/earth_clouds_2k.jpg");
+
+    // Configura a cor de fundo
+    glClearColor(0.3f, 0.3f, 0.3f, 1.0);
+
+    Camera.SetViewportSize(WindowWidth, WindowHeight);
+
+    constexpr glm::mat4 ModelMatrix = glm::identity<glm::mat4>();
+
+    double PreviousTime = glfwGetTime();
+
+    while (!glfwWindowShouldClose(Window))
+    {
+        double CurrentTime = glfwGetTime();
+        double DeltaTime = CurrentTime - PreviousTime;
+        if (DeltaTime > 0.0)
+        {
+            Camera.Update(static_cast<float>(DeltaTime));
+            PreviousTime = CurrentTime;
+        }
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        glUseProgram(ProgramId);
+
+        const glm::mat4 ViewMatrix = Camera.GetView();
+        const glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ViewMatrix * ModelMatrix));
+        const glm::mat4 ModelViewMatrix = ViewMatrix * ModelMatrix;
+        const glm::mat4 ModelViewProjectionMatrix = Camera.GetViewProjection() * ModelMatrix;
+
+        GLint TimeLoc = glGetUniformLocation(ProgramId, "Time");
+        glUniform1f(TimeLoc, static_cast<GLfloat>(CurrentTime));
+
+        GLint NormalMatrixLoc = glGetUniformLocation(ProgramId, "NormalMatrix");
+        glUniformMatrix4fv(NormalMatrixLoc, 1, GL_FALSE, glm::value_ptr(NormalMatrix));
+
+        GLint ModelViewMatrixLoc = glGetUniformLocation(ProgramId, "ModelViewMatrix");
+        glUniformMatrix4fv(ModelViewMatrixLoc, 1, GL_FALSE, glm::value_ptr(ModelViewMatrix));
+
+        GLint ModelViewProjectionLoc = glGetUniformLocation(ProgramId, "ModelViewProjection");
+        glUniformMatrix4fv(ModelViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ModelViewProjectionMatrix));
+
+        GLint LightIntensityLoc = glGetUniformLocation(ProgramId, "Light.Intensity");
+        glUniform1f(LightIntensityLoc, Light.Intensity);
+
+        const glm::vec4 LightPositionViewSpace = ViewMatrix * glm::vec4{ LightPosition, 1.0f };
+
+        GLint LightPositionLoc = glGetUniformLocation(ProgramId, "Light.Position");
+        glUniform3fv(LightPositionLoc, 1, glm::value_ptr(LightPositionViewSpace));
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, EarthTextureId);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, CloudsTextureId);
+
+        GLint TextureSamplerLoc = glGetUniformLocation(ProgramId, "EarthTexture");
+        glUniform1i(TextureSamplerLoc, 0);
+
+        GLint CloudsTextureSamplerLoc = glGetUniformLocation(ProgramId, "CloudsTexture");
+        glUniform1i(CloudsTextureSamplerLoc, 1);
+
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINES);
+        glBindVertexArray(GeoRenderData.VAO);
+        glDrawElements(GL_TRIANGLES, GeoRenderData.NumTriangles * 3, GL_UNSIGNED_INT, nullptr);
+        glBindVertexArray(0);
+
+        glfwPollEvents();
+        glfwSwapBuffers(Window);
+    }
 
     glfwDestroyWindow(Window);
     glfwTerminate();

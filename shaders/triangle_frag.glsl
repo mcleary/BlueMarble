@@ -4,8 +4,13 @@ in vec3 Position;
 in vec3 Normal;
 in vec2 UV;
 
-uniform vec3 LightPosition;
-uniform float LightIntensity;
+struct FLight
+{
+    vec3 Position;
+    float Intensity;
+};
+
+uniform FLight Light;
 
 uniform float Time;
 
@@ -19,18 +24,18 @@ out vec4 OutColor;
 void main()
 {
     vec3 N = normalize(Normal);
-    vec3 L = normalize(LightPosition - Position);
+    vec3 L = normalize(Light.Position - Position);
 
-    float Diffuse = max(dot(N, L), 0.0);
+    float Lambertian = max(dot(N, L), 0.0);
 
     vec3 EarthColor = texture(EarthTexture, UV).rgb;
     vec3 CloudsColor = texture(CloudsTexture, UV + Time * CloudsRotationSpeed).rgb;
 
-    float DistanceToLight = distance(LightPosition, Position);
+    float DistanceToLight = distance(Light.Position, Position);
     vec3 SurfaceColor = EarthColor + CloudsColor;
 
     vec3 AmbientReflection = vec3(0.2, 0.2, 0.2);
-    vec3 DiffuseReflection = Diffuse * LightIntensity * SurfaceColor;
+    vec3 DiffuseReflection = Lambertian * SurfaceColor * Light.Intensity;
 
     OutColor = vec4(DiffuseReflection, 1.0);
 }
