@@ -130,6 +130,9 @@ Geometry GenerateSphere(GLuint InResolution)
 
 Geometry GenerateCylinder(GLuint InResolution)
 {
+    constexpr float CylinderHeight = 1.0f;
+    constexpr float HalfCylinderHeight = CylinderHeight / 2.0f;
+
     Geometry CylinderGeometry;
 
     constexpr float TwoPi = glm::two_pi<float>();
@@ -143,7 +146,7 @@ Geometry GenerateCylinder(GLuint InResolution)
         for (GLuint VIndex = 0; VIndex < InResolution; ++VIndex)
         {
             const float V = VIndex * InvResolution;
-            const float Height = glm::mix(0.0f, 1.0f, V);
+            const float Height = glm::mix(-HalfCylinderHeight, HalfCylinderHeight, V);
 
             glm::vec3 VertexPosition =
             {
@@ -152,10 +155,8 @@ Geometry GenerateCylinder(GLuint InResolution)
                 glm::cos(Theta),
             };
 
-            // VertexPosition = { Theta, Height, 0 };
-
             const glm::vec3 VertexNormal = glm::normalize(glm::vec3{ VertexPosition.x, 0.0f, VertexPosition.z });
-            CylinderGeometry.Vertices.emplace_back(Vertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = glm::vec2{ U, 1.0f - V } });
+            CylinderGeometry.Vertices.emplace_back(Vertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = { U, 1.0 - V } });
         }
     }
 
@@ -168,9 +169,39 @@ Geometry GenerateCylinder(GLuint InResolution)
             const GLuint P2 = U + (V + 1) * InResolution;
             const GLuint P3 = U + 1 + (V + 1) * InResolution;
 
-            CylinderGeometry.Indices.emplace_back(Triangle{ P3, P2, P0 });
-            CylinderGeometry.Indices.emplace_back(Triangle{ P1, P3, P0 });
+            CylinderGeometry.Indices.emplace_back(Triangle{ P0, P2, P3 });
+            CylinderGeometry.Indices.emplace_back(Triangle{ P0, P3, P1 });
         }
+    }
+
+    const glm::vec3 TopVertex = { 0.0f, HalfCylinderHeight, 0.0f };
+    const glm::vec3 BotVertex = { 0.0f, -HalfCylinderHeight, 0.0f };
+
+    CylinderGeometry.Vertices.emplace_back(Vertex{ .Position = TopVertex, .Normal = { 0.0f, 1.0f, 0.0f }, .UV = { 1.0f, 1.0f } });
+    const GLuint TopVertexIndex = CylinderGeometry.Vertices.size() - 1;
+    CylinderGeometry.Vertices.emplace_back(Vertex{ .Position = BotVertex, .Normal = { 0.0f, -1.0f, 0.0f }, .UV = { 0.0f, 0.0f } });
+    const GLuint BotVertexIndex = CylinderGeometry.Vertices.size() - 1;
+
+    for (GLuint UIndex = 0; UIndex < InResolution - 1; ++UIndex)
+    {
+        GLuint U = UIndex * InResolution;
+
+        GLuint P0 = U;
+        GLuint P1 = BotVertexIndex;
+        GLuint P2 = U + InResolution;
+
+        CylinderGeometry.Indices.emplace_back(Triangle{ P0, P1, P2 });
+    }
+
+    for (GLuint UIndex = 0; UIndex < InResolution - 1; ++UIndex)
+    {
+        GLuint U = UIndex * InResolution + (InResolution - 1);
+
+        GLuint P0 = U;
+        GLuint P1 = (UIndex + 1) * InResolution + (InResolution - 1);
+        GLuint P2 = TopVertexIndex;
+
+        CylinderGeometry.Indices.emplace_back(Triangle{ P0, P1, P2 });
     }
 
     return CylinderGeometry;
@@ -521,7 +552,7 @@ RenderData GetRenderData()
             break;
 
         case SceneType::Cylinder:
-            Geo = GenerateCylinder(SphereResolution);
+            Geo = GenerateCylinder(20);
             Camera.bIsOrtho = false;
             Light.Position = glm::vec3(0.0f, 0.0f, 1000.0f);
             Light.Intensity = 1.0f;
