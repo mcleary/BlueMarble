@@ -198,12 +198,30 @@ void CheckShader(GLuint ShaderId)
         GLint InfoLogLength = 0;
         glGetShaderiv(ShaderId, GL_INFO_LOG_LENGTH, &InfoLogLength);
 
-        std::string ShaderInfoLog(InfoLogLength, '\0');
-        glGetShaderInfoLog(ShaderId, InfoLogLength, nullptr, &ShaderInfoLog[0]);
-
         if (InfoLogLength > 0)
         {
-            std::cout << "Erro no Vertex Shader: " << std::endl;
+            GLint ShaderType = 0;
+            glGetShaderiv(ShaderId, GL_SHADER_TYPE, &ShaderType);
+
+            std::string ShaderInfoLog(InfoLogLength, '\0');
+            glGetShaderInfoLog(ShaderId, InfoLogLength, nullptr, &ShaderInfoLog[0]);
+
+            std::string_view ShaderTypeStr;
+            switch (ShaderType)
+            {
+                case GL_VERTEX_SHADER:
+                    ShaderTypeStr = "Vertex";
+                    break;
+
+                case GL_FRAGMENT_SHADER:
+                    ShaderTypeStr = "Fragment";
+                    break;
+
+                default:
+                    assert(false);
+            }
+
+            std::cout << "Erro no " << ShaderTypeStr << " Shader: " << std::endl;
             std::cout << ShaderInfoLog << std::endl;
 
             assert(false);
