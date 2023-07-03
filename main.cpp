@@ -20,6 +20,7 @@
 enum class SceneType
 {
     BlueMarble,
+    Cylinder,
     Ortho
 };
 
@@ -82,20 +83,19 @@ Geometry GenerateSphere(GLuint InResolution)
     for (GLuint UIndex = 0; UIndex < InResolution; ++UIndex)
     {
         const float U = UIndex * InvResolution;
-        const float Phi = glm::mix(0.0f, TwoPi, static_cast<float>(U));
+        const float Phi = glm::mix(0.0f, TwoPi, U);
 
         for (GLuint VIndex = 0; VIndex < InResolution; ++VIndex)
         {
             const float V = VIndex * InvResolution;
-            const float Theta = glm::mix(0.0f, Pi, static_cast<float>(V));
+            const float Theta = glm::mix(0.0f, Pi, V);
 
             // Equação paramétrica da esfera usando o Y como eixo polar
-            const glm::vec4 VertexPosition =
+            const glm::vec3 VertexPosition =
             {
                 glm::sin(Theta) * glm::sin(Phi),
                 glm::cos(Theta),
-                glm::sin(Theta) * glm::cos(Phi),
-                1.0f
+                glm::sin(Theta) * glm::cos(Phi)
             };
 
             const glm::vec3 VertexNormal = glm::normalize(VertexPosition);
@@ -118,6 +118,54 @@ Geometry GenerateSphere(GLuint InResolution)
     }
 
     return SphereGeometry;
+}
+
+Geometry GenerateCylinder(GLuint InResolution)
+{
+    Geometry CylinderGeometry;
+
+    constexpr float TwoPi = glm::two_pi<float>();
+    const float InvResolution = 1.0f / static_cast<float>(InResolution - 1);
+
+    for (GLuint UIndex = 0; UIndex < InResolution; ++UIndex)
+    {
+        const float U = UIndex * InvResolution;
+        const float Theta = glm::mix(0.0f, TwoPi, U);
+
+        for (GLuint VIndex = 0; VIndex < InResolution; ++VIndex)
+        {
+            const float V = VIndex * InvResolution;
+            const float Height = glm::mix(0.0f, 1.0f, V);
+
+            glm::vec3 VertexPosition =
+            {
+                glm::sin(Theta),
+                Height,
+                glm::cos(Theta),
+            };
+
+            // VertexPosition = { Theta, Height, 0 };
+
+            const glm::vec3 VertexNormal = glm::normalize(glm::vec3{ VertexPosition.x, 0.0f, VertexPosition.z });
+            CylinderGeometry.Vertices.emplace_back(Vertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = glm::vec2{ U, 1.0f - V } });
+        }
+    }
+
+    for (GLuint U = 0; U < InResolution - 1; ++U)
+    {
+        for (GLuint V = 0; V < InResolution - 1; ++V)
+        {
+            const GLuint P0 = U + V * InResolution;
+            const GLuint P1 = U + 1 + V * InResolution;
+            const GLuint P2 = U + (V + 1) * InResolution;
+            const GLuint P3 = U + 1 + (V + 1) * InResolution;
+
+            CylinderGeometry.Indices.emplace_back(Triangle{ P3, P2, P0 });
+            CylinderGeometry.Indices.emplace_back(Triangle{ P1, P3, P0 });
+        }
+    }
+
+    return CylinderGeometry;
 }
 
 Geometry GenerateQuad()
@@ -458,6 +506,13 @@ RenderData GetRenderData()
             Light.Intensity = 1.0f;
             break;
 
+        case SceneType::Cylinder:
+            Geo = GenerateCylinder(SphereResolution);
+            Camera.bIsOrtho = false;
+            Light.Position = glm::vec3(0.0f, 0.0f, 1000.0f);
+            Light.Intensity = 1.0f;
+            break;
+
         default:
             exit(1);
     }
@@ -618,7 +673,7 @@ int main()
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
-    glEnable(GL_CULL_FACE);
+    // glEnable(GL_CULL_FACE);
 
     // Carregar a Textura para a Memória de Vídeo
     GLuint EarthTextureId = LoadTexture("textures/earth_2k.jpg");
