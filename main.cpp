@@ -53,6 +53,7 @@ struct RenderData
 {
     GLuint VAO;
     GLuint NumTriangles;
+    glm::mat4 Transform = glm::identity<glm::mat4>();
 };
 
 struct InstancedRenderData : public RenderData
@@ -70,52 +71,46 @@ constexpr GLuint SphereResolution = 100;
 constexpr GLuint NumInstances = 10000;
 FLight Light;
 
-Geometry GenerateSphere(GLuint Resolution)
+Geometry GenerateSphere(GLuint InResolution)
 {
     Geometry SphereGeometry;
 
     constexpr float Pi = glm::pi<float>();
     constexpr float TwoPi = glm::two_pi<float>();
-    float InvResolution = 1.0f / static_cast<float>(Resolution - 1);
+    const float InvResolution = 1.0f / static_cast<float>(InResolution - 1);
 
-    const glm::mat4 RotateXAxis = glm::rotate(glm::identity<glm::mat4>(), glm::radians(90.0f), glm::vec3{ 1.0f, 0.0f, 0.0f });
-    const glm::mat4 RotateYAxis = glm::rotate(glm::identity<glm::mat4>(), glm::radians(90.0f), glm::vec3{ 0.0f, 1.0f, 0.0f });
-    const glm::mat4 RotateMatrix = RotateYAxis * RotateXAxis;
-
-    for (GLuint UIndex = 0; UIndex < Resolution; ++UIndex)
+    for (GLuint UIndex = 0; UIndex < InResolution; ++UIndex)
     {
         const float U = UIndex * InvResolution;
-        const float Theta = glm::mix(0.0f, TwoPi, static_cast<float>(U));
+        const float Phi = glm::mix(0.0f, TwoPi, static_cast<float>(U));
 
-        for (GLuint VIndex = 0; VIndex < Resolution; ++VIndex)
+        for (GLuint VIndex = 0; VIndex < InResolution; ++VIndex)
         {
             const float V = VIndex * InvResolution;
-            const float Phi = glm::mix(0.0f, Pi, static_cast<float>(V));
+            const float Theta = glm::mix(0.0f, Pi, static_cast<float>(V));
 
-            glm::vec4 VertexPosition =
+            // Equação paramétrica da esfera usando o Y como eixo polar
+            const glm::vec4 VertexPosition =
             {
-                glm::cos(Theta) * glm::sin(Phi),
                 glm::sin(Theta) * glm::sin(Phi),
-                glm::cos(Phi),
+                glm::cos(Theta),
+                glm::sin(Theta) * glm::cos(Phi),
                 1.0f
             };
 
-            VertexPosition = RotateMatrix * VertexPosition;
-
-            glm::vec3 VertexNormal = glm::normalize(VertexPosition);
-
-            SphereGeometry.Vertices.emplace_back(Vertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = glm::vec2{ 1.0f - U, 1.0f - V } });
+            const glm::vec3 VertexNormal = glm::normalize(VertexPosition);
+            SphereGeometry.Vertices.emplace_back(Vertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = glm::vec2{ U, V } });
         }
     }
 
-    for (GLuint U = 0; U < Resolution - 1; ++U)
+    for (GLuint U = 0; U < InResolution - 1; ++U)
     {
-        for (GLuint V = 0; V < Resolution - 1; ++V)
+        for (GLuint V = 0; V < InResolution - 1; ++V)
         {
-            GLuint P0 = U + V * Resolution;
-            GLuint P1 = U + 1 + V * Resolution;
-            GLuint P2 = U + (V + 1) * Resolution;
-            GLuint P3 = U + 1 + (V + 1) * Resolution;
+            const GLuint P0 = U + V * InResolution;
+            const GLuint P1 = U + 1 + V * InResolution;
+            const GLuint P2 = U + (V + 1) * InResolution;
+            const GLuint P3 = U + 1 + (V + 1) * InResolution;
 
             SphereGeometry.Indices.emplace_back(Triangle{ P3, P2, P0 });
             SphereGeometry.Indices.emplace_back(Triangle{ P1, P3, P0 });
@@ -168,11 +163,11 @@ std::vector<glm::mat4> GenerateInstances(GLuint InNumInstances)
         model = glm::translate(model, glm::vec3(x, y, z));
 
         // 2. scale: scale between 0.05 and 0.25f
-        float scale = (rand() % 20) / 100.0f + 0.05;
+        float scale = (rand() % 20) / 100.0f + 0.05f;
         model = glm::scale(model, glm::vec3(scale));
 
         // 3. rotation: add random rotation around a (semi)randomly picked rotation axis vector
-        float rotAngle = (rand() % 360);
+        float rotAngle = float(rand() % 360);
         model = glm::rotate(model, rotAngle, glm::vec3(0.4f, 0.6f, 0.8f));
 
         ModelMatrices.emplace_back(model);
@@ -343,6 +338,8 @@ void MouseMotionCallback(GLFWwindow* Window, double X, double Y)
     }
 }
 
+float R = 0;
+
 void KeyCallback(GLFWwindow* Window, std::int32_t Key, std::int32_t ScanCode, std::int32_t Action, std::int32_t Modifers)
 {
     if (Action == GLFW_PRESS)
@@ -424,11 +421,13 @@ void ResizeCallback(GLFWwindow* Window, std::int32_t Width, std::int32_t Height)
 RenderData GetRenderData()
 {
     Geometry Geo;
+    RenderData GeoRenderData;
 
     switch (Scene)
     {
         case SceneType::BlueMarble:
             Geo = GenerateSphere(SphereResolution);
+            GeoRenderData.Transform = glm::rotate(glm::identity<glm::mat4>(), glm::radians(170.0f), glm::vec3{ 0.0f, 1.0f, 0.0f });
             Camera.bIsOrtho = false;
             Light.Position = glm::vec3(0.0f, 0.0f, 1000.0f);
             Light.Intensity = 1.0f;
@@ -456,7 +455,6 @@ RenderData GetRenderData()
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, Geo.Indices.size() * sizeof(Triangle), Geo.Indices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-    RenderData GeoRenderData;
     GeoRenderData.NumTriangles = (GLuint) Geo.Indices.size();
 
     glGenVertexArrays(1, &GeoRenderData.VAO);
@@ -544,8 +542,8 @@ InstancedRenderData GetInstancedRenderData()
 
     InstancedRenderData InstRenderData;
     InstRenderData.VAO = InstanceVAO;
-    InstRenderData.NumInstances = Instances.size();
-    InstRenderData.NumTriangles = Geo.Indices.size();
+    InstRenderData.NumInstances = static_cast<GLuint>(Instances.size());
+    InstRenderData.NumTriangles = static_cast<GLuint>(Geo.Indices.size());
     return InstRenderData;
 }
 
@@ -598,7 +596,7 @@ int main()
     GLuint InstancedProgramId = LoadShaders("shaders/instanced_vert.glsl", "shaders/instanced_frag.glsl");
 
     RenderData GeoRenderData = GetRenderData();
-    InstancedRenderData InstRenderData= GetInstancedRenderData();
+    InstancedRenderData InstRenderData = GetInstancedRenderData();
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -617,8 +615,8 @@ int main()
 
     while (!glfwWindowShouldClose(Window))
     {
-        double CurrentTime = glfwGetTime();
-        double DeltaTime = CurrentTime - PreviousTime;
+        const double CurrentTime = glfwGetTime();
+        const double DeltaTime = CurrentTime - PreviousTime;
         if (DeltaTime > 0.0)
         {
             Camera.Update(static_cast<float>(DeltaTime));
@@ -629,21 +627,22 @@ int main()
 
         glUseProgram(ProgramId);
 
-        glm::mat4 ModelMatrix = glm::identity<glm::mat4>();
-        glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ModelMatrix));
-        glm::mat4 ViewMatrix = Camera.GetView();
-        glm::mat4 ViewProjection = Camera.GetViewProjection();
-        glm::mat4 ModelViewProjectionMatrix = ViewProjection * ModelMatrix;
+        const glm::mat4 ViewMatrix = Camera.GetView();
+        const glm::mat4 ViewProjection = Camera.GetViewProjection();
 
         {
+            const glm::mat4 ModelMatrix = GeoRenderData.Transform;
+            const glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ModelMatrix));
+            const glm::mat4 ModelViewProjectionMatrix = ViewProjection * ModelMatrix;
+
             GLint TimeLoc = glGetUniformLocation(ProgramId, "Time");
             glUniform1f(TimeLoc, static_cast<GLfloat>(CurrentTime));
 
             GLint NormalMatrixLoc = glGetUniformLocation(ProgramId, "NormalMatrix");
             glUniformMatrix4fv(NormalMatrixLoc, 1, GL_FALSE, glm::value_ptr(NormalMatrix));
 
-            GLint ModelViewMatrixLoc = glGetUniformLocation(ProgramId, "ModelMatrix");
-            glUniformMatrix4fv(ModelViewMatrixLoc, 1, GL_FALSE, glm::value_ptr(ModelMatrix));
+            GLint ModelMatrixLoc = glGetUniformLocation(ProgramId, "ModelMatrix");
+            glUniformMatrix4fv(ModelMatrixLoc, 1, GL_FALSE, glm::value_ptr(ModelMatrix));
 
             GLint ModelViewProjectionLoc = glGetUniformLocation(ProgramId, "ModelViewProjection");
             glUniformMatrix4fv(ModelViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ModelViewProjectionMatrix));
@@ -666,11 +665,13 @@ int main()
             GLint CloudsTextureSamplerLoc = glGetUniformLocation(ProgramId, "CloudsTexture");
             glUniform1i(CloudsTextureSamplerLoc, 1);
 
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             glBindVertexArray(GeoRenderData.VAO);
             glDrawElements(GL_TRIANGLES, GeoRenderData.NumTriangles * 3, GL_UNSIGNED_INT, nullptr);
             glBindVertexArray(0);
         }
 
+        if (false)
         {
             // Render Instanced Data
             glUseProgram(InstancedProgramId);

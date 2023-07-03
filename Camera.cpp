@@ -10,12 +10,12 @@ SimpleCamera::SimpleCamera()
 
 void SimpleCamera::MoveForward(float Scale)
 {
-	ForwardScale = Scale * 40;
+	ForwardScale = Scale;
 }
 
 void SimpleCamera::MoveRight(float Scale)
 {
-	RightScale = Scale * 40;
+	RightScale = Scale;
 }
 
 void SimpleCamera::MouseMove(float X, float Y)
