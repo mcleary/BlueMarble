@@ -38,6 +38,12 @@ struct Triangle
     GLuint V2;
 };
 
+struct LineVertex
+{
+    glm::vec3 Position;
+    glm::vec3 Color;
+};
+
 struct FLight
 {
     glm::vec3 Position;
@@ -53,7 +59,7 @@ struct Geometry
 struct RenderData
 {
     GLuint VAO;
-    GLuint NumTriangles;
+    GLuint NumElements;
     glm::mat4 Transform = glm::identity<glm::mat4>();
 };
 
@@ -71,6 +77,8 @@ SimpleCamera Camera;
 constexpr GLuint SphereResolution = 100;
 constexpr GLuint NumInstances = 10000;
 FLight Light;
+bool bShowWireframe = false;
+bool bCullFace = false;
 
 Geometry GenerateSphere(GLuint InResolution)
 {
@@ -99,7 +107,7 @@ Geometry GenerateSphere(GLuint InResolution)
             };
 
             const glm::vec3 VertexNormal = glm::normalize(VertexPosition);
-            SphereGeometry.Vertices.emplace_back(Vertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = glm::vec2{ U, V } });
+            SphereGeometry.Vertices.emplace_back(Vertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = { U, V } });
         }
     }
 
@@ -404,8 +412,6 @@ void MouseMotionCallback(GLFWwindow* Window, double X, double Y)
     }
 }
 
-float R = 0;
-
 void KeyCallback(GLFWwindow* Window, std::int32_t Key, std::int32_t ScanCode, std::int32_t Action, std::int32_t Modifers)
 {
     if (Action == GLFW_PRESS)
@@ -468,6 +474,14 @@ void KeyCallback(GLFWwindow* Window, std::int32_t Key, std::int32_t ScanCode, st
                 Camera.Reset();
                 break;
 
+            case GLFW_KEY_M:
+                bShowWireframe = !bShowWireframe;
+                break;
+
+            case GLFW_KEY_N:
+                bCullFace = !bCullFace;
+                break;
+
             default:
                 break;
         }
@@ -493,7 +507,7 @@ RenderData GetRenderData()
     {
         case SceneType::BlueMarble:
             Geo = GenerateSphere(SphereResolution);
-            GeoRenderData.Transform = glm::rotate(glm::identity<glm::mat4>(), glm::radians(170.0f), glm::vec3{ 0.0f, 1.0f, 0.0f });
+            GeoRenderData.Transform = glm::rotate(glm::identity<glm::mat4>(), glm::radians(180.0f), glm::vec3{ 0.0f, 1.0f, 0.0f });
             Camera.bIsOrtho = false;
             Light.Position = glm::vec3(0.0f, 0.0f, 1000.0f);
             Light.Intensity = 1.0f;
@@ -528,7 +542,7 @@ RenderData GetRenderData()
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, Geo.Indices.size() * sizeof(Triangle), Geo.Indices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
-    GeoRenderData.NumTriangles = (GLuint) Geo.Indices.size();
+    GeoRenderData.NumElements = (GLuint) Geo.Indices.size() * 3;
 
     glGenVertexArrays(1, &GeoRenderData.VAO);
     glBindVertexArray(GeoRenderData.VAO);
@@ -552,6 +566,45 @@ RenderData GetRenderData()
     glBindVertexArray(0);
 
     return GeoRenderData;
+}
+
+RenderData GetAxisRenderData()
+{
+    const std::array<LineVertex, 6> Vertices =
+    {
+        LineVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Color = { 1.0f, 0.0f, 0.0f } },
+        LineVertex{ .Position = { 10.0f, 0.0f, 0.0f }, .Color = { 1.0f, 0.0f, 0.0f } },
+
+        LineVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Color = { 0.0f, 1.0f, 0.0f } },
+        LineVertex{ .Position = { 0.0f, 10.0f, 0.0f }, .Color = { 0.0f, 1.0f, 0.0f } },
+
+        LineVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Color = { 0.0f, 0.0f, 1.0f } },
+        LineVertex{ .Position = { 0.0f, 0.0f, 10.0f }, .Color = { 0.0f, 0.0f, 1.0f } },
+    };
+
+    GLuint VertexBuffer;
+    glGenBuffers(1, &VertexBuffer);
+    glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
+    glBufferData(GL_ARRAY_BUFFER, Vertices.size() * sizeof(Vertex), Vertices.data(), GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    RenderData AxisRenderData;
+    AxisRenderData.NumElements = (GLuint) Vertices.size();
+
+    glGenVertexArrays(1, &AxisRenderData.VAO);
+    glBindVertexArray(AxisRenderData.VAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
+
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(LineVertex), nullptr);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(LineVertex), reinterpret_cast<void*>(offsetof(LineVertex, Color)));
+
+    glBindVertexArray(0);
+
+    return AxisRenderData;
 }
 
 InstancedRenderData GetInstancedRenderData()
@@ -616,7 +669,7 @@ InstancedRenderData GetInstancedRenderData()
     InstancedRenderData InstRenderData;
     InstRenderData.VAO = InstanceVAO;
     InstRenderData.NumInstances = static_cast<GLuint>(Instances.size());
-    InstRenderData.NumTriangles = static_cast<GLuint>(Geo.Indices.size());
+    InstRenderData.NumElements = static_cast<GLuint>(Geo.Indices.size()) * 3;
     return InstRenderData;
 }
 
@@ -667,7 +720,9 @@ int main()
     // Compilar o vertex e o fragment shader
     GLuint ProgramId = LoadShaders("shaders/triangle_vert.glsl", "shaders/triangle_frag.glsl");
     GLuint InstancedProgramId = LoadShaders("shaders/instanced_vert.glsl", "shaders/instanced_frag.glsl");
+    GLuint AxisProgramId = LoadShaders("shaders/lines.vert.glsl", "shaders/lines_frag.glsl");
 
+    RenderData AxisRenderData = GetAxisRenderData();
     RenderData GeoRenderData = GetRenderData();
     InstancedRenderData InstRenderData = GetInstancedRenderData();
 
@@ -688,6 +743,15 @@ int main()
 
     while (!glfwWindowShouldClose(Window))
     {
+        if (bCullFace)
+        {
+            glEnable(GL_CULL_FACE);
+        }
+        else
+        {
+            glDisable(GL_CULL_FACE);
+        }
+
         const double CurrentTime = glfwGetTime();
         const double DeltaTime = CurrentTime - PreviousTime;
         if (DeltaTime > 0.0)
@@ -698,12 +762,25 @@ int main()
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(ProgramId);
-
         const glm::mat4 ViewMatrix = Camera.GetView();
         const glm::mat4 ViewProjection = Camera.GetViewProjection();
 
         {
+            glUseProgram(AxisProgramId);
+
+            const glm::mat4 ModelViewProjectionMatrix = ViewProjection;
+
+            GLint ModelViewProjectionLoc = glGetUniformLocation(AxisProgramId, "ModelViewProjection");
+            glUniformMatrix4fv(ModelViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ModelViewProjectionMatrix));
+
+            glBindVertexArray(AxisRenderData.VAO);
+            glDrawArrays(GL_LINES, 0, AxisRenderData.NumElements);
+            glBindVertexArray(0);
+        }
+
+        {
+            glUseProgram(ProgramId);
+
             const glm::mat4 ModelMatrix = GeoRenderData.Transform;
             const glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ModelMatrix));
             const glm::mat4 ModelViewProjectionMatrix = ViewProjection * ModelMatrix;
@@ -738,9 +815,9 @@ int main()
             GLint CloudsTextureSamplerLoc = glGetUniformLocation(ProgramId, "CloudsTexture");
             glUniform1i(CloudsTextureSamplerLoc, 1);
 
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            glPolygonMode(GL_FRONT_AND_BACK, bShowWireframe ? GL_LINE : GL_FILL);
             glBindVertexArray(GeoRenderData.VAO);
-            glDrawElements(GL_TRIANGLES, GeoRenderData.NumTriangles * 3, GL_UNSIGNED_INT, nullptr);
+            glDrawElements(GL_TRIANGLES, GeoRenderData.NumElements, GL_UNSIGNED_INT, nullptr);
             glBindVertexArray(0);
         }
 
@@ -762,7 +839,7 @@ int main()
             glUniformMatrix4fv(ViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ViewProjection));
 
             glBindVertexArray(InstRenderData.VAO);
-            glDrawElementsInstanced(GL_TRIANGLES, InstRenderData.NumInstances * 3, GL_UNSIGNED_INT, nullptr, InstRenderData.NumInstances);
+            glDrawElementsInstanced(GL_TRIANGLES, InstRenderData.NumElements, GL_UNSIGNED_INT, nullptr, InstRenderData.NumInstances);
             glBindVertexArray(0);
         }
 
