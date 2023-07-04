@@ -44,7 +44,7 @@ struct LineVertex
     glm::vec3 Color;
 };
 
-struct FLight
+struct Light
 {
     glm::vec3 Position;
     float Intensity;
@@ -76,7 +76,7 @@ SceneType Scene = SceneType::BlueMarble;
 SimpleCamera Camera;
 constexpr GLuint SphereResolution = 100;
 constexpr GLuint NumInstances = 10000;
-FLight Light;
+Light PointLight;
 bool bShowWireframe = false;
 bool bCullFace = false;
 
@@ -178,9 +178,9 @@ Geometry GenerateCylinder(GLuint InResolution)
     const glm::vec3 BotVertex = { 0.0f, -HalfCylinderHeight, 0.0f };
 
     CylinderGeometry.Vertices.emplace_back(Vertex{ .Position = TopVertex, .Normal = { 0.0f, 1.0f, 0.0f }, .UV = { 1.0f, 1.0f } });
-    const GLuint TopVertexIndex = CylinderGeometry.Vertices.size() - 1;
+    const GLuint TopVertexIndex = static_cast<GLuint>(CylinderGeometry.Vertices.size() - 1);
     CylinderGeometry.Vertices.emplace_back(Vertex{ .Position = BotVertex, .Normal = { 0.0f, -1.0f, 0.0f }, .UV = { 0.0f, 0.0f } });
-    const GLuint BotVertexIndex = CylinderGeometry.Vertices.size() - 1;
+    const GLuint BotVertexIndex = static_cast<GLuint>(CylinderGeometry.Vertices.size() - 1);
 
     for (GLuint UIndex = 0; UIndex < InResolution - 1; ++UIndex)
     {
@@ -438,8 +438,8 @@ void MouseMotionCallback(GLFWwindow* Window, double X, double Y)
 
     if (Scene == SceneType::Ortho)
     {
-        Light.Position.x = static_cast<float>(X) / WindowWidth;
-        Light.Position.y = static_cast<float>(WindowHeight - Y) / WindowHeight;
+        PointLight.Position.x = static_cast<float>(X) / WindowWidth;
+        PointLight.Position.y = static_cast<float>(WindowHeight - Y) / WindowHeight;
     }
 }
 
@@ -540,22 +540,22 @@ RenderData GetRenderData()
             Geo = GenerateSphere(SphereResolution);
             GeoRenderData.Transform = glm::rotate(glm::identity<glm::mat4>(), glm::radians(180.0f), glm::vec3{ 0.0f, 1.0f, 0.0f });
             Camera.bIsOrtho = false;
-            Light.Position = glm::vec3(0.0f, 0.0f, 1000.0f);
-            Light.Intensity = 1.0f;
+            PointLight.Position = glm::vec3(0.0f, 0.0f, 1000.0f);
+            PointLight.Intensity = 1.0f;
             break;
 
         case SceneType::Ortho:
             Geo = GenerateQuad();
             Camera.bIsOrtho = true;
-            Light.Position = glm::vec3(0.0f, 0.0f, 0.05f);
-            Light.Intensity = 1.0f;
+            PointLight.Position = glm::vec3(0.0f, 0.0f, 0.05f);
+            PointLight.Intensity = 1.0f;
             break;
 
         case SceneType::Cylinder:
             Geo = GenerateCylinder(20);
             Camera.bIsOrtho = false;
-            Light.Position = glm::vec3(0.0f, 0.0f, 1000.0f);
-            Light.Intensity = 1.0f;
+            PointLight.Position = glm::vec3(0.0f, 0.0f, 1000.0f);
+            PointLight.Intensity = 1.0f;
             break;
 
         default:
@@ -759,7 +759,6 @@ int main()
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
-    // glEnable(GL_CULL_FACE);
 
     // Carregar a Textura para a Memória de Vídeo
     GLuint EarthTextureId = LoadTexture("textures/earth_2k.jpg");
@@ -828,11 +827,11 @@ int main()
             GLint ModelViewProjectionLoc = glGetUniformLocation(ProgramId, "ModelViewProjection");
             glUniformMatrix4fv(ModelViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ModelViewProjectionMatrix));
 
-            GLint LightIntensityLoc = glGetUniformLocation(ProgramId, "Light.Intensity");
-            glUniform1f(LightIntensityLoc, Light.Intensity);
+            GLint LightIntensityLoc = glGetUniformLocation(ProgramId, "PointLight.Intensity");
+            glUniform1f(LightIntensityLoc, PointLight.Intensity);
 
-            GLint LightPositionLoc = glGetUniformLocation(ProgramId, "Light.Position");
-            glUniform3fv(LightPositionLoc, 1, glm::value_ptr(Light.Position));
+            GLint LightPositionLoc = glGetUniformLocation(ProgramId, "PointLight.Position");
+            glUniform3fv(LightPositionLoc, 1, glm::value_ptr(PointLight.Position));
 
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, EarthTextureId);
@@ -852,7 +851,7 @@ int main()
             glBindVertexArray(0);
         }
 
-        if (false)
+        if (true)
         {
             // Render Instanced Data
             glUseProgram(InstancedProgramId);

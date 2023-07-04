@@ -4,13 +4,13 @@ in vec3 Position;
 in vec3 Normal;
 in vec2 UV;
 
-struct FLight
+struct Light
 {
     vec3 Position;
     float Intensity;
 };
 
-uniform FLight Light;
+uniform Light PointLight;
 
 uniform float Time;
 
@@ -24,7 +24,7 @@ out vec4 OutColor;
 void main()
 {
     vec3 N = normalize(Normal);
-    vec3 L = normalize(Light.Position - Position);
+    vec3 L = normalize(PointLight.Position - Position);
 
     float Lambertian = max(dot(N, L), 0.0);
 
@@ -33,7 +33,7 @@ void main()
 
     vec3 SurfaceColor = EarthColor + CloudsColor;
 
-    vec3 DiffuseReflection = Lambertian * SurfaceColor * Light.Intensity;
+    vec3 DiffuseReflection = Lambertian * SurfaceColor * PointLight.Intensity;
 
     OutColor = vec4(DiffuseReflection, 1.0);
 }
