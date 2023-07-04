@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <random>
 
 #include <glad/glad.h>
 
@@ -233,32 +234,32 @@ std::vector<glm::mat4> GenerateInstances(GLuint InNumInstances)
     std::vector<glm::mat4> ModelMatrices;
     ModelMatrices.reserve(InNumInstances);
 
-    float Radius = 10.0;
-    float Offset = 2.f;
+    std::random_device Device;
+    std::default_random_engine Generator(Device());
+
+    constexpr float Jitter = 0.1f;
+    std::normal_distribution<> JitterDistribution{ -Jitter, Jitter };
+    std::normal_distribution<> NormalDistribution(0.0f, 0.1f);
+
     for (std::uint32_t Index = 0; Index < InNumInstances; ++Index)
     {
-        glm::mat4 model = glm::identity<glm::mat4>();
+        const float Radius = 5.0f + JitterDistribution(Generator);
 
-        // 1. translation: displace along circle with 'radius' in range [-offset, offset]
-        float angle = (float)Index / (float)InNumInstances * 360.0f;
-        float displacement = (rand() % (int)(2 * Offset * 100)) / 100.0f - Offset;
-        float x = sin(angle) * InNumInstances + displacement;
-        displacement = (rand() % (int)(2 * Offset * 100)) / 100.0f - Offset;
-        float y = displacement * 0.4f; // keep height of field smaller compared to width of x and z
-        displacement = (rand() % (int)(2 * Offset * 100)) / 100.0f - Offset;
-        float z = cos(angle) * Radius + displacement;
-        model = glm::translate(model, glm::vec3(x, y, z));
+        const float Alpha = static_cast<float>(Index) / static_cast<float>(InNumInstances);
+        const float Angle = glm::mix(0.0f, glm::two_pi<float>(), Alpha);
 
-        // 2. scale: scale between 0.05 and 0.25f
-        float scale = (rand() % 20) / 100.0f + 0.05f;
-        model = glm::scale(model, glm::vec3(scale));
+        const float X = Radius * glm::sin(Angle);
+        const float Y = NormalDistribution(Generator);
+        const float Z = Radius * glm::cos(Angle);
 
-        // 3. rotation: add random rotation around a (semi)randomly picked rotation axis vector
-        float rotAngle = float(rand() % 360);
-        model = glm::rotate(model, rotAngle, glm::vec3(0.4f, 0.6f, 0.8f));
+        glm::mat4 InstanceMatrix = glm::translate(glm::identity<glm::mat4>(), { X, Y, Z });
+        constexpr float Scale = 0.01f;
+        InstanceMatrix = glm::scale(InstanceMatrix, { Scale, Scale, Scale });
 
-        ModelMatrices.emplace_back(model);
+        ModelMatrices.emplace_back(InstanceMatrix);
     }
+
+    std::shuffle(ModelMatrices.begin(), ModelMatrices.end(), Generator);
 
     return ModelMatrices;
 }
@@ -859,10 +860,13 @@ int main()
             GLuint TimeLoc = glGetUniformLocation(InstancedProgramId, "Time");
             glUniform1f(TimeLoc, static_cast<GLfloat>(CurrentTime));
 
-            GLuint TextureSamplerLoc = glGetUniformLocation(InstancedProgramId, "EarthTexture");
+            GLint NumInstancesLoc = glGetUniformLocation(InstancedProgramId, "NumInstances");
+            glUniform1i(NumInstancesLoc, InstRenderData.NumInstances);
+
+            GLint TextureSamplerLoc = glGetUniformLocation(InstancedProgramId, "EarthTexture");
             glUniform1i(TextureSamplerLoc, 0);
 
-            GLuint CloudsTextureSamplerLoc = glGetUniformLocation(InstancedProgramId, "CloudsTexture");
+            GLint CloudsTextureSamplerLoc = glGetUniformLocation(InstancedProgramId, "CloudsTexture");
             glUniform1i(CloudsTextureSamplerLoc, 1);
 
             GLint ViewProjectionLoc = glGetUniformLocation(InstancedProgramId, "ViewProjection");
