@@ -8,7 +8,11 @@ layout(location = 3) in mat4 InModelMatrix;
 uniform float Time;
 uniform int NumInstances;
 
-uniform mat4 ViewProjection;
+layout (std140) uniform Matrices
+{
+    mat4 View;
+    mat4 Projection;
+};
 
 out VertexData
 {
@@ -34,7 +38,7 @@ mat4 Rotation3D(vec3 axis, float angle) {
 
 void main()
 {
-    float Speed = ( float(gl_InstanceID) / float(NumInstances)) * 0.01f;
+    float Speed = (float(gl_InstanceID) / float(NumInstances)) * 0.01f;
     float Angle = Time * Speed;
     mat4 RotationMatrix = Rotation3D(vec3(0.0, 1.0, 0.0), Angle);
 
@@ -42,5 +46,5 @@ void main()
     Out.Normal = vec3(inverse(transpose(InModelMatrix)) * vec4(InNormal, 0.0));
     Out.UV = InUV;
 
-    gl_Position = ViewProjection * RotationMatrix * InModelMatrix * vec4(InPosition, 1.0);
+    gl_Position = Projection * View * RotationMatrix * InModelMatrix * vec4(InPosition, 1.0);
 }

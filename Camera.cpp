@@ -71,9 +71,8 @@ glm::mat4 SimpleCamera::GetView()
 	return glm::lookAt(Location, Location + Direction, Up);
 }
 
-glm::mat4 SimpleCamera::GetViewProjection()
+glm::mat4 SimpleCamera::GetProjection()
 {
-	glm::mat4 View = GetView();
 	glm::mat4 Projection;
 
     if (bIsOrtho)
@@ -85,5 +84,5 @@ glm::mat4 SimpleCamera::GetViewProjection()
         Projection = glm::perspective(FieldOfView, AspectRatio, Near, Far);
     }
 
-	return Projection * View;
+	return Projection;
 }

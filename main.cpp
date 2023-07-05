@@ -69,6 +69,12 @@ struct InstancedRenderData : public RenderData
     GLuint NumInstances;
 };
 
+struct UBOMatrices
+{
+    glm::mat4 View;
+    glm::mat4 Projection;
+};
+
 // Configurações Iniciais
 GLFWwindow* Window = nullptr;
 std::int32_t WindowWidth = 1920;
@@ -238,8 +244,8 @@ std::vector<glm::mat4> GenerateInstances(GLuint InNumInstances)
     std::default_random_engine Generator(Device());
 
     constexpr float Jitter = 0.1f;
-    std::normal_distribution<> JitterDistribution{ -Jitter, Jitter };
-    std::normal_distribution<> NormalDistribution(0.0f, 0.1f);
+    std::normal_distribution<float> JitterDistribution{ -Jitter, Jitter };
+    std::normal_distribution<float> NormalDistribution(0.0f, 0.1f);
 
     for (std::uint32_t Index = 0; Index < InNumInstances; ++Index)
     {
@@ -539,23 +545,23 @@ RenderData GetRenderData()
     {
         case SceneType::BlueMarble:
             Geo = GenerateSphere(SphereResolution);
-            GeoRenderData.Transform = glm::rotate(glm::identity<glm::mat4>(), glm::radians(180.0f), glm::vec3{ 0.0f, 1.0f, 0.0f });
+            GeoRenderData.Transform = glm::rotate(glm::identity<glm::mat4>(), glm::radians(180.0f), { 0.0f, 1.0f, 0.0f });
             Camera.bIsOrtho = false;
-            PointLight.Position = glm::vec3(0.0f, 0.0f, 1000.0f);
+            PointLight.Position = { 0.0f, 0.0f, 1000.0f };
             PointLight.Intensity = 1.0f;
             break;
 
         case SceneType::Ortho:
             Geo = GenerateQuad();
             Camera.bIsOrtho = true;
-            PointLight.Position = glm::vec3(0.0f, 0.0f, 0.05f);
+            PointLight.Position = { 0.0f, 0.0f, 0.05f };
             PointLight.Intensity = 1.0f;
             break;
 
         case SceneType::Cylinder:
             Geo = GenerateCylinder(20);
             Camera.bIsOrtho = false;
-            PointLight.Position = glm::vec3(0.0f, 0.0f, 1000.0f);
+            PointLight.Position = { 0.0f, 0.0f, 1000.0f };
             PointLight.Intensity = 1.0f;
             break;
 
@@ -765,6 +771,34 @@ int main()
     GLuint EarthTextureId = LoadTexture("textures/earth_2k.jpg");
     GLuint CloudsTextureId = LoadTexture("textures/earth_clouds_2k.jpg");
 
+    GLuint MatricesUBO, LightUBO;
+
+    glGenBuffers(1, &MatricesUBO);
+    glBindBuffer(GL_UNIFORM_BUFFER, MatricesUBO);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(UBOMatrices), nullptr, GL_STATIC_DRAW);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    glGenBuffers(1, &LightUBO);
+    glBindBuffer(GL_UNIFORM_BUFFER, LightUBO);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(Light), nullptr, GL_STATIC_DRAW);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    glBindBufferRange(GL_UNIFORM_BUFFER, 0, MatricesUBO, 0, sizeof(UBOMatrices));
+    glBindBufferRange(GL_UNIFORM_BUFFER, 1, LightUBO, 0, sizeof(Light));
+
+    {
+        const GLuint MatricesUBOIndex = glGetUniformBlockIndex(ProgramId, "Matrices");
+        const GLuint LightUBOIndex = glGetUniformBlockIndex(ProgramId, "LightUBO");
+
+        glUniformBlockBinding(ProgramId, MatricesUBOIndex, 0);
+        glUniformBlockBinding(ProgramId, LightUBOIndex, 1);
+    }
+
+    {
+        const GLuint MatricesUBOIndex = glGetUniformBlockIndex(InstancedProgramId, "Matrices");
+        glUniformBlockBinding(InstancedProgramId, MatricesUBOIndex, 0);
+    }
+
     // Configura a cor de fundo
     glClearColor(0.1f, 0.1f, 0.1f, 1.0);
 
@@ -793,13 +827,18 @@ int main()
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        const glm::mat4 ViewMatrix = Camera.GetView();
-        const glm::mat4 ViewProjection = Camera.GetViewProjection();
+        UBOMatrices Matrices = { .View = Camera.GetView(), .Projection = Camera.GetProjection() };
+
+        glBindBuffer(GL_UNIFORM_BUFFER, MatricesUBO);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(UBOMatrices), &Matrices, GL_STATIC_DRAW);
+
+        glBindBuffer(GL_UNIFORM_BUFFER, LightUBO);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(Light), &PointLight, GL_STATIC_DRAW);
 
         {
             glUseProgram(AxisProgramId);
 
-            const glm::mat4 ModelViewProjectionMatrix = ViewProjection;
+            const glm::mat4 ModelViewProjectionMatrix = Matrices.Projection * Matrices.View;
 
             GLint ModelViewProjectionLoc = glGetUniformLocation(AxisProgramId, "ModelViewProjection");
             glUniformMatrix4fv(ModelViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ModelViewProjectionMatrix));
@@ -814,7 +853,6 @@ int main()
 
             const glm::mat4 ModelMatrix = GeoRenderData.Transform;
             const glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ModelMatrix));
-            const glm::mat4 ModelViewProjectionMatrix = ViewProjection * ModelMatrix;
 
             GLint TimeLoc = glGetUniformLocation(ProgramId, "Time");
             glUniform1f(TimeLoc, static_cast<GLfloat>(CurrentTime));
@@ -824,15 +862,6 @@ int main()
 
             GLint ModelMatrixLoc = glGetUniformLocation(ProgramId, "ModelMatrix");
             glUniformMatrix4fv(ModelMatrixLoc, 1, GL_FALSE, glm::value_ptr(ModelMatrix));
-
-            GLint ModelViewProjectionLoc = glGetUniformLocation(ProgramId, "ModelViewProjection");
-            glUniformMatrix4fv(ModelViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ModelViewProjectionMatrix));
-
-            GLint LightIntensityLoc = glGetUniformLocation(ProgramId, "PointLight.Intensity");
-            glUniform1f(LightIntensityLoc, PointLight.Intensity);
-
-            GLint LightPositionLoc = glGetUniformLocation(ProgramId, "PointLight.Position");
-            glUniform3fv(LightPositionLoc, 1, glm::value_ptr(PointLight.Position));
 
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, EarthTextureId);
@@ -868,9 +897,6 @@ int main()
 
             GLint CloudsTextureSamplerLoc = glGetUniformLocation(InstancedProgramId, "CloudsTexture");
             glUniform1i(CloudsTextureSamplerLoc, 1);
-
-            GLint ViewProjectionLoc = glGetUniformLocation(InstancedProgramId, "ViewProjection");
-            glUniformMatrix4fv(ViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ViewProjection));
 
             glBindVertexArray(InstRenderData.VAO);
             glDrawElementsInstanced(GL_TRIANGLES, InstRenderData.NumElements, GL_UNSIGNED_INT, nullptr, InstRenderData.NumInstances);

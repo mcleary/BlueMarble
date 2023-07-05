@@ -6,7 +6,12 @@ layout(location = 2) in vec2 InUV;
 
 uniform mat4 ModelMatrix;
 uniform mat4 NormalMatrix;
-uniform mat4 ModelViewProjection;
+
+layout (std140) uniform Matrices
+{
+    mat4 View;
+    mat4 Projection;
+};
 
 out VertexData
 {
@@ -22,5 +27,5 @@ void main()
     Out.Normal = vec3(NormalMatrix * vec4(InNormal, 0.0));
     Out.UV = InUV;
 
-    gl_Position = ModelViewProjection * vec4(InPosition, 1.0);
+    gl_Position = Projection * View * ModelMatrix * vec4(InPosition, 1.0);
 }

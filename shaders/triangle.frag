@@ -13,7 +13,10 @@ struct Light
     float Intensity;
 };
 
-uniform Light PointLight;
+layout (std140) uniform LightUBO
+{
+    Light PointLight;
+};
 
 uniform float Time;
 

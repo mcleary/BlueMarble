@@ -14,7 +14,7 @@ public:
     void Reset();
     void SetViewportSize(std::int32_t Width, std::int32_t Height);
 	glm::mat4 GetView();
-	glm::mat4 GetViewProjection();
+    glm::mat4 GetProjection();
 
 	bool bEnableMouseMovement = false;
 	glm::vec2 PreviousCursor{ 0.0f };
