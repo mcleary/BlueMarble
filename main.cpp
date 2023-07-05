@@ -750,9 +750,9 @@ int main()
     std::cout << "GLSL Version    : " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
 
     // Compilar o vertex e o fragment shader
-    GLuint ProgramId = LoadShaders("shaders/triangle_vert.glsl", "shaders/triangle_frag.glsl");
-    GLuint InstancedProgramId = LoadShaders("shaders/instanced_vert.glsl", "shaders/instanced_frag.glsl");
-    GLuint AxisProgramId = LoadShaders("shaders/lines.vert.glsl", "shaders/lines_frag.glsl");
+    GLuint ProgramId = LoadShaders("shaders/triangle.vert", "shaders/triangle.frag");
+    GLuint InstancedProgramId = LoadShaders("shaders/instanced.vert", "shaders/instanced.frag");
+    GLuint AxisProgramId = LoadShaders("shaders/lines.vert", "shaders/lines.frag");
 
     RenderData AxisRenderData = GetAxisRenderData();
     RenderData GeoRenderData = GetRenderData();

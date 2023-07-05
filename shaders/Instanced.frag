@@ -1,8 +1,11 @@
 #version 330 core
 
-in vec3 Position;
-in vec3 Normal;
-in vec2 UV;
+in VertexData
+{
+    vec3 Position;
+    vec3 Normal;
+    vec2 UV;
+} In;
 
 uniform float Time;
 
@@ -15,8 +18,8 @@ out vec4 OutColor;
 
 void main()
 {
-    vec3 EarthColor = texture(EarthTexture, UV).rgb;
-    vec3 CloudsColor = texture(CloudsTexture, UV + Time * CloudsRotationSpeed).rgb;
+    vec3 EarthColor = texture(EarthTexture, In.UV).rgb;
+    vec3 CloudsColor = texture(CloudsTexture, In.UV + Time * CloudsRotationSpeed).rgb;
     vec3 SurfaceColor = EarthColor + CloudsColor;
 
     OutColor = vec4(SurfaceColor, 1.0);

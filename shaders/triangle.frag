@@ -1,8 +1,11 @@
 #version 330 core
 
-in vec3 Position;
-in vec3 Normal;
-in vec2 UV;
+in VertexData
+{
+    vec3 Position;
+    vec3 Normal;
+    vec2 UV;
+} In;
 
 struct Light
 {
@@ -23,13 +26,13 @@ out vec4 OutColor;
 
 void main()
 {
-    vec3 N = normalize(Normal);
-    vec3 L = normalize(PointLight.Position - Position);
+    vec3 N = normalize(In.Normal);
+    vec3 L = normalize(PointLight.Position - In.Position);
 
     float Lambertian = max(dot(N, L), 0.0);
 
-    vec3 EarthColor = texture(EarthTexture, UV).rgb;
-    vec3 CloudsColor = texture(CloudsTexture, UV + Time * CloudsRotationSpeed).rgb;
+    vec3 EarthColor = texture(EarthTexture, In.UV).rgb;
+    vec3 CloudsColor = texture(CloudsTexture, In.UV + Time * CloudsRotationSpeed).rgb;
 
     vec3 SurfaceColor = EarthColor + CloudsColor;
 

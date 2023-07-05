@@ -10,9 +10,12 @@ uniform int NumInstances;
 
 uniform mat4 ViewProjection;
 
-out vec3 Position;
-out vec3 Normal;
-out vec2 UV;
+out VertexData
+{
+    vec3 Position;
+    vec3 Normal;
+    vec2 UV;
+} Out;
 
 // https://github.com/dmnsgn/glsl-rotate/blob/main/rotation-3d.glsl
 mat4 Rotation3D(vec3 axis, float angle) {
@@ -35,9 +38,9 @@ void main()
     float Angle = Time * Speed;
     mat4 RotationMatrix = Rotation3D(vec3(0.0, 1.0, 0.0), Angle);
 
-    Position = vec3(InModelMatrix * vec4(InPosition, 1.0));
-    Normal = vec3(inverse(transpose(InModelMatrix)) * vec4(InNormal, 0.0));
-    UV = InUV;
+    Out.Position = vec3(InModelMatrix * vec4(InPosition, 1.0));
+    Out.Normal = vec3(inverse(transpose(InModelMatrix)) * vec4(InNormal, 0.0));
+    Out.UV = InUV;
 
     gl_Position = ViewProjection * RotationMatrix * InModelMatrix * vec4(InPosition, 1.0);
 }
