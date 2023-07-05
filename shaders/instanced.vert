@@ -38,7 +38,7 @@ mat4 Rotation3D(vec3 axis, float angle) {
 
 void main()
 {
-    float Speed = (float(gl_InstanceID) / float(NumInstances)) * 0.01f;
+    float Speed = (float(gl_InstanceID) / float(NumInstances)) * 1.0f;
     float Angle = Time * Speed;
     mat4 RotationMatrix = Rotation3D(vec3(0.0, 1.0, 0.0), Angle);
 

@@ -51,8 +51,9 @@ void SimpleCamera::Update(float DeltaTime)
 
 void SimpleCamera::Reset()
 {
-    Location = { 0.0f, 0.0f, 5.0f };
-    Direction = { 0.0f, 0.0f, -1.0f };
+    Location = { 6.0f, 3.0f, 6.0f };
+    // Direction = { 0.0f, 0.0f, -1.0f };
+    Direction = glm::normalize(-Location);
     Up = { 0.0f, 1.0f, 0.0f };
 }
 

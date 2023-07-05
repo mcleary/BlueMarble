@@ -82,10 +82,12 @@ std::int32_t WindowHeight = 1080;
 SceneType Scene = SceneType::BlueMarble;
 SimpleCamera Camera;
 constexpr GLuint SphereResolution = 100;
-constexpr GLuint NumInstances = 10000;
+constexpr GLuint NumInstances = 500'000;
 Light PointLight;
 bool bShowWireframe = false;
 bool bCullFace = false;
+bool bPause = true;
+bool bReverse = false;
 
 Geometry GenerateSphere(GLuint InResolution)
 {
@@ -255,7 +257,9 @@ std::vector<glm::mat4> GenerateInstances(GLuint InNumInstances)
         const float Angle = glm::mix(0.0f, glm::two_pi<float>(), Alpha);
 
         const float X = Radius * glm::sin(Angle);
-        const float Y = NormalDistribution(Generator);
+        // const float Y = NormalDistribution(Generator);
+        float Y = Index / (float)InNumInstances;
+        Y += NormalDistribution(Generator) * 0.5f;
         const float Z = Radius * glm::cos(Angle);
 
         glm::mat4 InstanceMatrix = glm::translate(glm::identity<glm::mat4>(), { X, Y, Z });
@@ -265,7 +269,7 @@ std::vector<glm::mat4> GenerateInstances(GLuint InNumInstances)
         ModelMatrices.emplace_back(InstanceMatrix);
     }
 
-    std::shuffle(ModelMatrices.begin(), ModelMatrices.end(), Generator);
+    // std::shuffle(ModelMatrices.begin(), ModelMatrices.end(), Generator);
 
     return ModelMatrices;
 }
@@ -520,6 +524,14 @@ void KeyCallback(GLFWwindow* Window, std::int32_t Key, std::int32_t ScanCode, st
                 bCullFace = !bCullFace;
                 break;
 
+            case GLFW_KEY_P:
+                bPause = !bPause;
+                break;
+
+            case GLFW_KEY_L:
+                bReverse = !bReverse;
+                break;
+
             default:
                 break;
         }
@@ -772,7 +784,6 @@ int main()
     GLuint CloudsTextureId = LoadTexture("textures/earth_clouds_2k.jpg");
 
     GLuint MatricesUBO, LightUBO;
-
     glGenBuffers(1, &MatricesUBO);
     glBindBuffer(GL_UNIFORM_BUFFER, MatricesUBO);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(UBOMatrices), nullptr, GL_STATIC_DRAW);
@@ -804,7 +815,10 @@ int main()
 
     Camera.SetViewportSize(WindowWidth, WindowHeight);
 
+    double TotalTime = 0.0;
+    double TimeSinceLastFrame = 0.0f;
     double PreviousTime = glfwGetTime();
+    std::uint32_t FrameCount = 0;
 
     while (!glfwWindowShouldClose(Window))
     {
@@ -821,9 +835,23 @@ int main()
         const double DeltaTime = CurrentTime - PreviousTime;
         if (DeltaTime > 0.0)
         {
+            const double TimeScale = bReverse ? -1.0f : 1.0f;
+            TotalTime += DeltaTime * (bPause ? 0.0f : TimeScale);
+            TimeSinceLastFrame += DeltaTime;
+            if (TimeSinceLastFrame >= 1.0)
+            {
+                const double FramesPerSecond = FrameCount / TimeSinceLastFrame;
+                TimeSinceLastFrame = 0.0;
+                FrameCount = 0;
+                const std::string WindowTitle = "BlueMarble - FPS: " + std::to_string(FramesPerSecond);
+                glfwSetWindowTitle(Window, WindowTitle.c_str());
+            }
+
             Camera.Update(static_cast<float>(DeltaTime));
             PreviousTime = CurrentTime;
         }
+
+        FrameCount++;
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -855,7 +883,7 @@ int main()
             const glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ModelMatrix));
 
             GLint TimeLoc = glGetUniformLocation(ProgramId, "Time");
-            glUniform1f(TimeLoc, static_cast<GLfloat>(CurrentTime));
+            glUniform1f(TimeLoc, static_cast<GLfloat>(TotalTime));
 
             GLint NormalMatrixLoc = glGetUniformLocation(ProgramId, "NormalMatrix");
             glUniformMatrix4fv(NormalMatrixLoc, 1, GL_FALSE, glm::value_ptr(NormalMatrix));
@@ -887,7 +915,7 @@ int main()
             glUseProgram(InstancedProgramId);
 
             GLuint TimeLoc = glGetUniformLocation(InstancedProgramId, "Time");
-            glUniform1f(TimeLoc, static_cast<GLfloat>(CurrentTime));
+            glUniform1f(TimeLoc, static_cast<GLfloat>(TotalTime));
 
             GLint NumInstancesLoc = glGetUniformLocation(InstancedProgramId, "NumInstances");
             glUniform1i(NumInstancesLoc, InstRenderData.NumInstances);
