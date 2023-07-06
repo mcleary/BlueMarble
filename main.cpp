@@ -2,7 +2,11 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <map>
 #include <random>
+#include <future>
+#include <thread>
+#include <functional>
 
 #include <glad/glad.h>
 
@@ -420,6 +424,72 @@ GLuint LoadTexture(const char* TextureFile)
     return TextureId;
 }
 
+std::map<std::string, GLint> LoadTextures(const std::vector<std::string>& InTextureFiles)
+{
+    struct TextureData
+    {
+        std::int32_t TextureWidth = 0;
+        std::int32_t TextureHeight = 0;
+        std::uint8_t* Data = nullptr;
+    };
+
+    std::mutex PrintMutex;
+
+    std::vector<std::thread> Threads;
+    std::map<std::string, std::future<TextureData>> TextureFutures;
+    for (const std::string& TextureFile : InTextureFiles)
+    {
+        std::packaged_task<TextureData()> LoadTextureTask([&TextureFile, &PrintMutex]
+        {
+            TextureData Data;
+            constexpr std::int32_t NumReqComponents = 3;
+            Data.Data = stbi_load(TextureFile.c_str(), &Data.TextureWidth, &Data.TextureHeight, 0, NumReqComponents);
+            assert(Data.Data);
+            return Data;
+        });
+
+        TextureFutures.emplace(TextureFile, LoadTextureTask.get_future());
+
+        Threads.emplace_back(std::move(LoadTextureTask));
+    }
+
+    std::map<std::string, GLint> LoadedTextures;
+    for (std::pair<const std::string, std::future<TextureData>>& TextureFuturePair : TextureFutures)
+    {
+        std::string TextureFile = TextureFuturePair.first;
+        TextureData Data = std::move(TextureFuturePair.second).get();
+
+        // Gerar o Identifador da Textura
+        GLuint TextureId;
+        glGenTextures(1, &TextureId);
+
+        // Habilita a textura para ser modificada
+        glBindTexture(GL_TEXTURE_2D, TextureId);
+
+        // Copia a textura para a memória da GPU
+        const GLint Level = 0;
+        const GLint Border = 0;
+        glTexImage2D(GL_TEXTURE_2D, Level, GL_RGB, Data.TextureWidth, Data.TextureHeight, Border, GL_RGB, GL_UNSIGNED_BYTE, Data.Data);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        stbi_image_free(Data.Data);
+        LoadedTextures[TextureFile] = TextureId;
+    }
+
+    for (std::thread& Thread : Threads)
+    {
+        Thread.join();
+    }
+
+    return LoadedTextures;
+}
+
 void MouseButtonCallback(GLFWwindow* Window, std::int32_t Button, std::int32_t Action, std::int32_t Modifiers)
 {
     if (Button == GLFW_MOUSE_BUTTON_LEFT)
@@ -779,9 +849,28 @@ int main()
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
 
-    // Carregar a Textura para a Memória de Vídeo
-    GLuint EarthTextureId = LoadTexture("textures/earth_2k.jpg");
-    GLuint CloudsTextureId = LoadTexture("textures/earth_clouds_2k.jpg");
+    GLint EarthTextureId, CloudsTextureId;
+
+    const std::string EarthTextureFile = "textures/earth_2k.jpg";
+    const std::string CloudsTextureFile = "textures/earth_clouds_2k.jpg";
+
+    const double LoadTexturesStartTime = glfwGetTime();
+    constexpr bool bParallelLoadTextures = true;
+    if constexpr (bParallelLoadTextures)
+    {
+        // Não vale a pena fazer isso só com duas texturas mas eu quis fazer uma função que fizesse isso de forma paralela mesmo assim
+        const std::map<std::string, GLint> TextureIds = LoadTextures({ EarthTextureFile, CloudsTextureFile });
+        EarthTextureId = TextureIds.at(EarthTextureFile);
+        CloudsTextureId = TextureIds.at(CloudsTextureFile);
+    }
+    else
+    {
+        // Carregar a Textura para a Memória de Vídeo
+        EarthTextureId = LoadTexture(EarthTextureFile.c_str());
+        CloudsTextureId = LoadTexture(CloudsTextureFile.c_str());
+    }
+    const double LoadTexturesEndTime = glfwGetTime();
+    std::cout << "Texturas Carregadas em " << (LoadTexturesEndTime - LoadTexturesStartTime) << " segundos" << std::endl;
 
     GLuint MatricesUBO, LightUBO;
     glGenBuffers(1, &MatricesUBO);
