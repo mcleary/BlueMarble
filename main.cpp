@@ -21,81 +21,112 @@
 
 #include "Camera.h"
 
-
-enum class SceneType
+enum class ESceneType
 {
     BlueMarble,
     Cylinder,
     Ortho
 };
 
-struct Vertex
+struct FVertex
 {
     glm::vec3 Position;
     glm::vec3 Normal;
     glm::vec2 UV;
 };
 
-struct Triangle
+struct FTriangle
 {
     GLuint V0;
     GLuint V1;
     GLuint V2;
 };
 
-struct LineVertex
+struct FLineVertex
 {
     glm::vec3 Position;
     glm::vec3 Color;
 };
 
-struct Light
+struct FLight
 {
     glm::vec3 Position;
     float Intensity;
 };
 
-struct Geometry
+struct FGeometry
 {
-    std::vector<Vertex> Vertices;
-    std::vector<Triangle> Indices;
+    std::vector<FVertex> Vertices;
+    std::vector<FTriangle> Indices;
 };
 
-struct RenderData
+struct FRenderData
 {
     GLuint VAO;
     GLuint NumElements;
     glm::mat4 Transform = glm::identity<glm::mat4>();
 };
 
-struct InstancedRenderData : public RenderData
+struct FInstancedRenderData : public FRenderData
 {
     GLuint NumInstances;
 };
 
-struct UBOMatrices
+struct FUBOMatrices
 {
     glm::mat4 View;
     glm::mat4 Projection;
 };
 
-// Configurações Iniciais
-GLFWwindow* Window = nullptr;
-std::int32_t WindowWidth = 1920;
-std::int32_t WindowHeight = 1080;
-SceneType Scene = SceneType::BlueMarble;
-SimpleCamera Camera;
-constexpr GLuint SphereResolution = 100;
-constexpr GLuint NumInstances = 500'000;
-Light PointLight;
-bool bShowWireframe = false;
-bool bCullFace = false;
-bool bPause = true;
-bool bReverse = false;
-
-Geometry GenerateSphere(GLuint InResolution)
+struct FSimulationConfig
 {
-    Geometry SphereGeometry;
+    bool bPause = true;
+    bool bReverse = false;
+    double TotalTime = 0.0f;
+    double FramesPerSecond = 0.0f;
+    std::uint32_t FrameCount = 0;
+    std::int32_t TotalFrames = 0;
+};
+
+struct FRenderConfig
+{
+    bool bShowWireframe = false;
+    bool bCullFace = false;
+    bool bDrawAxis = true;
+    bool bDrawObject = true;
+    bool bDrawInstances = true;
+};
+
+struct FViewportConfig
+{
+    GLFWwindow* Window = nullptr;
+    std::int32_t WindowWidth = 1920;
+    std::int32_t WindowHeight = 1080;
+};
+
+struct FSceneConfig
+{
+    static constexpr ESceneType SceneType = ESceneType::BlueMarble;
+    static constexpr GLuint SphereResolution = 100;
+    static constexpr GLuint NumInstances = 500'000;
+
+    SimpleCamera Camera;
+    FLight PointLight;
+};
+
+struct FConfig
+{
+    FSimulationConfig Simulation;
+    FRenderConfig Render;
+    FSceneConfig Scene;
+    FViewportConfig Viewport;
+};
+
+FConfig gConfig;
+
+FGeometry GenerateSphere(GLuint InResolution)
+{
+    FGeometry SphereGeometry;
 
     constexpr float Pi = glm::pi<float>();
     constexpr float TwoPi = glm::two_pi<float>();
@@ -120,7 +151,7 @@ Geometry GenerateSphere(GLuint InResolution)
             };
 
             const glm::vec3 VertexNormal = glm::normalize(VertexPosition);
-            SphereGeometry.Vertices.emplace_back(Vertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = { U, V } });
+            SphereGeometry.Vertices.emplace_back(FVertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = { U, V } });
         }
     }
 
@@ -133,20 +164,20 @@ Geometry GenerateSphere(GLuint InResolution)
             const GLuint P2 = U + (V + 1) * InResolution;
             const GLuint P3 = U + 1 + (V + 1) * InResolution;
 
-            SphereGeometry.Indices.emplace_back(Triangle{ P3, P2, P0 });
-            SphereGeometry.Indices.emplace_back(Triangle{ P1, P3, P0 });
+            SphereGeometry.Indices.emplace_back(FTriangle{ P3, P2, P0 });
+            SphereGeometry.Indices.emplace_back(FTriangle{ P1, P3, P0 });
         }
     }
 
     return SphereGeometry;
 }
 
-Geometry GenerateCylinder(GLuint InResolution)
+FGeometry GenerateCylinder(GLuint InResolution)
 {
     constexpr float CylinderHeight = 1.0f;
     constexpr float HalfCylinderHeight = CylinderHeight / 2.0f;
 
-    Geometry CylinderGeometry;
+    FGeometry CylinderGeometry;
 
     constexpr float TwoPi = glm::two_pi<float>();
     const float InvResolution = 1.0f / static_cast<float>(InResolution - 1);
@@ -169,7 +200,7 @@ Geometry GenerateCylinder(GLuint InResolution)
             };
 
             const glm::vec3 VertexNormal = glm::normalize(glm::vec3{ VertexPosition.x, 0.0f, VertexPosition.z });
-            CylinderGeometry.Vertices.emplace_back(Vertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = { U, 1.0 - V } });
+            CylinderGeometry.Vertices.emplace_back(FVertex{ .Position = VertexPosition, .Normal = VertexNormal, .UV = { U, 1.0 - V } });
         }
     }
 
@@ -182,17 +213,17 @@ Geometry GenerateCylinder(GLuint InResolution)
             const GLuint P2 = U + (V + 1) * InResolution;
             const GLuint P3 = U + 1 + (V + 1) * InResolution;
 
-            CylinderGeometry.Indices.emplace_back(Triangle{ P0, P2, P3 });
-            CylinderGeometry.Indices.emplace_back(Triangle{ P0, P3, P1 });
+            CylinderGeometry.Indices.emplace_back(FTriangle{ P0, P2, P3 });
+            CylinderGeometry.Indices.emplace_back(FTriangle{ P0, P3, P1 });
         }
     }
 
     const glm::vec3 TopVertex = { 0.0f, HalfCylinderHeight, 0.0f };
     const glm::vec3 BotVertex = { 0.0f, -HalfCylinderHeight, 0.0f };
 
-    CylinderGeometry.Vertices.emplace_back(Vertex{ .Position = TopVertex, .Normal = { 0.0f, 1.0f, 0.0f }, .UV = { 1.0f, 1.0f } });
+    CylinderGeometry.Vertices.emplace_back(FVertex{ .Position = TopVertex, .Normal = { 0.0f, 1.0f, 0.0f }, .UV = { 1.0f, 1.0f } });
     const GLuint TopVertexIndex = static_cast<GLuint>(CylinderGeometry.Vertices.size() - 1);
-    CylinderGeometry.Vertices.emplace_back(Vertex{ .Position = BotVertex, .Normal = { 0.0f, -1.0f, 0.0f }, .UV = { 0.0f, 0.0f } });
+    CylinderGeometry.Vertices.emplace_back(FVertex{ .Position = BotVertex, .Normal = { 0.0f, -1.0f, 0.0f }, .UV = { 0.0f, 0.0f } });
     const GLuint BotVertexIndex = static_cast<GLuint>(CylinderGeometry.Vertices.size() - 1);
 
     for (GLuint UIndex = 0; UIndex < InResolution - 1; ++UIndex)
@@ -203,7 +234,7 @@ Geometry GenerateCylinder(GLuint InResolution)
         GLuint P1 = BotVertexIndex;
         GLuint P2 = U + InResolution;
 
-        CylinderGeometry.Indices.emplace_back(Triangle{ P0, P1, P2 });
+        CylinderGeometry.Indices.emplace_back(FTriangle{ P0, P1, P2 });
     }
 
     for (GLuint UIndex = 0; UIndex < InResolution - 1; ++UIndex)
@@ -214,28 +245,28 @@ Geometry GenerateCylinder(GLuint InResolution)
         GLuint P1 = (UIndex + 1) * InResolution + (InResolution - 1);
         GLuint P2 = TopVertexIndex;
 
-        CylinderGeometry.Indices.emplace_back(Triangle{ P0, P1, P2 });
+        CylinderGeometry.Indices.emplace_back(FTriangle{ P0, P1, P2 });
     }
 
     return CylinderGeometry;
 }
 
-Geometry GenerateQuad()
+FGeometry GenerateQuad()
 {
-    Geometry QuadGeometry;
+    FGeometry QuadGeometry;
 
     constexpr glm::vec3 Normal = { 0.0f, 0.0f, 1.0f };
     QuadGeometry.Vertices =
     {
-        Vertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Normal = Normal, .UV = { 0.0f, 1.0f } },
-        Vertex{ .Position = { 1.0f, 0.0f, 0.0f }, .Normal = Normal, .UV = { 1.0f, 1.0f } },
-        Vertex{ .Position = { 1.0f, 1.0f, 0.0f }, .Normal = Normal, .UV = { 1.0f, 0.0f } },
-        Vertex{ .Position = { 0.0f, 1.0f, 0.0f }, .Normal = Normal, .UV = { 0.0f, 0.0f } },
+        FVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Normal = Normal, .UV = { 0.0f, 1.0f } },
+        FVertex{ .Position = { 1.0f, 0.0f, 0.0f }, .Normal = Normal, .UV = { 1.0f, 1.0f } },
+        FVertex{ .Position = { 1.0f, 1.0f, 0.0f }, .Normal = Normal, .UV = { 1.0f, 0.0f } },
+        FVertex{ .Position = { 0.0f, 1.0f, 0.0f }, .Normal = Normal, .UV = { 0.0f, 0.0f } },
     };
     QuadGeometry.Indices =
     {
-        Triangle{ 0, 1, 2 },
-        Triangle{ 2, 3, 0 },
+        FTriangle{ 0, 1, 2 },
+        FTriangle{ 2, 3, 0 },
     };
 
     return QuadGeometry;
@@ -501,26 +532,26 @@ void MouseButtonCallback(GLFWwindow* Window, std::int32_t Button, std::int32_t A
             double X, Y;
             glfwGetCursorPos(Window, &X, &Y);
 
-            Camera.PreviousCursor = glm::vec2{ X, Y };
-            Camera.bEnableMouseMovement = true;
+            gConfig.Scene.Camera.PreviousCursor = glm::vec2{ X, Y };
+            gConfig.Scene.Camera.bEnableMouseMovement = true;
         }
         else if (Action == GLFW_RELEASE)
         {
             glfwSetInputMode(Window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
 
-            Camera.bEnableMouseMovement = false;
+            gConfig.Scene.Camera.bEnableMouseMovement = false;
         }
     }
 }
 
 void MouseMotionCallback(GLFWwindow* Window, double X, double Y)
 {
-    Camera.MouseMove(static_cast<float>(X), static_cast<float>(Y));
+    gConfig.Scene.Camera.MouseMove(static_cast<float>(X), static_cast<float>(Y));
 
-    if (Scene == SceneType::Ortho)
+    if (gConfig.Scene.SceneType == ESceneType::Ortho)
     {
-        PointLight.Position.x = static_cast<float>(X) / WindowWidth;
-        PointLight.Position.y = static_cast<float>(WindowHeight - Y) / WindowHeight;
+        gConfig.Scene.PointLight.Position.x = static_cast<float>(X) / gConfig.Viewport.WindowWidth;
+        gConfig.Scene.PointLight.Position.y = static_cast<float>(gConfig.Viewport.WindowHeight - Y) / gConfig.Viewport.WindowHeight;
     }
 }
 
@@ -535,19 +566,19 @@ void KeyCallback(GLFWwindow* Window, std::int32_t Key, std::int32_t ScanCode, st
                 break;
 
             case GLFW_KEY_W:
-                Camera.MoveForward(1.0f);
+                gConfig.Scene.Camera.MoveForward(1.0f);
                 break;
 
             case GLFW_KEY_S:
-                Camera.MoveForward(-1.0f);
+                gConfig.Scene.Camera.MoveForward(-1.0f);
                 break;
 
             case GLFW_KEY_A:
-                Camera.MoveRight(-1.0f);
+                gConfig.Scene.Camera.MoveRight(-1.0f);
                 break;
 
             case GLFW_KEY_D:
-                Camera.MoveRight(1.0f);
+                gConfig.Scene.Camera.MoveRight(1.0f);
                 break;
 
             default:
@@ -563,43 +594,43 @@ void KeyCallback(GLFWwindow* Window, std::int32_t Key, std::int32_t ScanCode, st
                 break;
 
             case GLFW_KEY_W:
-                Camera.MoveForward(0.0f);
+                gConfig.Scene.Camera.MoveForward(0.0f);
                 break;
 
             case GLFW_KEY_S:
-                Camera.MoveForward(0.0f);
+                gConfig.Scene.Camera.MoveForward(0.0f);
                 break;
 
             case GLFW_KEY_A:
-                Camera.MoveRight(0.0f);
+                gConfig.Scene.Camera.MoveRight(0.0f);
                 break;
 
             case GLFW_KEY_D:
-                Camera.MoveRight(0.0f);
+                gConfig.Scene.Camera.MoveRight(0.0f);
                 break;
 
             case GLFW_KEY_O:
-                Camera.bIsOrtho = !Camera.bIsOrtho;
+                gConfig.Scene.Camera.bIsOrtho = !gConfig.Scene.Camera.bIsOrtho;
                 break;
 
             case GLFW_KEY_R:
-                Camera.Reset();
+                gConfig.Scene.Camera.Reset();
                 break;
 
             case GLFW_KEY_M:
-                bShowWireframe = !bShowWireframe;
+                gConfig.Render.bShowWireframe = !gConfig.Render.bShowWireframe;
                 break;
 
             case GLFW_KEY_N:
-                bCullFace = !bCullFace;
+                gConfig.Render.bCullFace = !gConfig.Render.bCullFace;
                 break;
 
             case GLFW_KEY_P:
-                bPause = !bPause;
+                gConfig.Simulation.bPause = !gConfig.Simulation.bPause;
                 break;
 
             case GLFW_KEY_L:
-                bReverse = !bReverse;
+                gConfig.Simulation.bReverse = !gConfig.Simulation.bReverse;
                 break;
 
             default:
@@ -610,41 +641,41 @@ void KeyCallback(GLFWwindow* Window, std::int32_t Key, std::int32_t ScanCode, st
 
 void ResizeCallback(GLFWwindow* Window, std::int32_t Width, std::int32_t Height)
 {
-    WindowWidth = Width;
-    WindowHeight = Height;
+    gConfig.Viewport.WindowWidth = Width;
+    gConfig.Viewport.WindowHeight = Height;
 
-    Camera.SetViewportSize(Width, Height);
+    gConfig.Scene.Camera.SetViewportSize(Width, Height);
 
     glViewport(0, 0, Width, Height);
 }
 
-RenderData GetRenderData()
+FRenderData GetRenderData()
 {
-    Geometry Geo;
-    RenderData GeoRenderData;
+    FGeometry Geo;
+    FRenderData GeoRenderData;
 
-    switch (Scene)
+    switch (gConfig.Scene.SceneType)
     {
-        case SceneType::BlueMarble:
-            Geo = GenerateSphere(SphereResolution);
+        case ESceneType::BlueMarble:
+            Geo = GenerateSphere(gConfig.Scene.SphereResolution);
             GeoRenderData.Transform = glm::rotate(glm::identity<glm::mat4>(), glm::radians(180.0f), { 0.0f, 1.0f, 0.0f });
-            Camera.bIsOrtho = false;
-            PointLight.Position = { 0.0f, 0.0f, 1000.0f };
-            PointLight.Intensity = 1.0f;
+            gConfig.Scene.Camera.bIsOrtho = false;
+            gConfig.Scene.PointLight.Position = { 0.0f, 0.0f, 1000.0f };
+            gConfig.Scene.PointLight.Intensity = 1.0f;
             break;
 
-        case SceneType::Ortho:
+        case ESceneType::Ortho:
             Geo = GenerateQuad();
-            Camera.bIsOrtho = true;
-            PointLight.Position = { 0.0f, 0.0f, 0.05f };
-            PointLight.Intensity = 1.0f;
+            gConfig.Scene.Camera.bIsOrtho = true;
+            gConfig.Scene.PointLight.Position = { 0.0f, 0.0f, 0.05f };
+            gConfig.Scene.PointLight.Intensity = 1.0f;
             break;
 
-        case SceneType::Cylinder:
+        case ESceneType::Cylinder:
             Geo = GenerateCylinder(20);
-            Camera.bIsOrtho = false;
-            PointLight.Position = { 0.0f, 0.0f, 1000.0f };
-            PointLight.Intensity = 1.0f;
+            gConfig.Scene.Camera.bIsOrtho = false;
+            gConfig.Scene.PointLight.Position = { 0.0f, 0.0f, 1000.0f };
+            gConfig.Scene.PointLight.Intensity = 1.0f;
             break;
 
         default:
@@ -654,12 +685,12 @@ RenderData GetRenderData()
     GLuint VertexBuffer, ElementBuffer;
     glGenBuffers(1, &VertexBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER, Geo.Vertices.size() * sizeof(Vertex), Geo.Vertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, Geo.Vertices.size() * sizeof(FVertex), Geo.Vertices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     glGenBuffers(1, &ElementBuffer);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ElementBuffer);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, Geo.Indices.size() * sizeof(Triangle), Geo.Indices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, Geo.Indices.size() * sizeof(FTriangle), Geo.Indices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     GeoRenderData.NumElements = (GLuint) Geo.Indices.size() * 3;
@@ -678,9 +709,9 @@ RenderData GetRenderData()
 
     // Informa ao OpenGL onde, dentro do VertexBuffer, os vértices estão. No
     // nosso caso o array Triangles é tudo o que a gente precisa
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, Normal)));
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, UV)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(FVertex), nullptr);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(FVertex), reinterpret_cast<void*>(offsetof(FVertex, Normal)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(FVertex), reinterpret_cast<void*>(offsetof(FVertex, UV)));
 
     // Disabilitar o VAO
     glBindVertexArray(0);
@@ -688,27 +719,27 @@ RenderData GetRenderData()
     return GeoRenderData;
 }
 
-RenderData GetAxisRenderData()
+FRenderData GetAxisRenderData()
 {
-    const std::array<LineVertex, 6> Vertices =
+    const std::array<FLineVertex, 6> Vertices =
     {
-        LineVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Color = { 1.0f, 0.0f, 0.0f } },
-        LineVertex{ .Position = { 10.0f, 0.0f, 0.0f }, .Color = { 1.0f, 0.0f, 0.0f } },
+        FLineVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Color = { 1.0f, 0.0f, 0.0f } },
+        FLineVertex{ .Position = { 10.0f, 0.0f, 0.0f }, .Color = { 1.0f, 0.0f, 0.0f } },
 
-        LineVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Color = { 0.0f, 1.0f, 0.0f } },
-        LineVertex{ .Position = { 0.0f, 10.0f, 0.0f }, .Color = { 0.0f, 1.0f, 0.0f } },
+        FLineVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Color = { 0.0f, 1.0f, 0.0f } },
+        FLineVertex{ .Position = { 0.0f, 10.0f, 0.0f }, .Color = { 0.0f, 1.0f, 0.0f } },
 
-        LineVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Color = { 0.0f, 0.0f, 1.0f } },
-        LineVertex{ .Position = { 0.0f, 0.0f, 10.0f }, .Color = { 0.0f, 0.0f, 1.0f } },
+        FLineVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Color = { 0.0f, 0.0f, 1.0f } },
+        FLineVertex{ .Position = { 0.0f, 0.0f, 10.0f }, .Color = { 0.0f, 0.0f, 1.0f } },
     };
 
     GLuint VertexBuffer;
     glGenBuffers(1, &VertexBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER, Vertices.size() * sizeof(Vertex), Vertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, Vertices.size() * sizeof(FVertex), Vertices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    RenderData AxisRenderData;
+    FRenderData AxisRenderData;
     AxisRenderData.NumElements = (GLuint) Vertices.size();
 
     glGenVertexArrays(1, &AxisRenderData.VAO);
@@ -719,28 +750,28 @@ RenderData GetAxisRenderData()
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(LineVertex), nullptr);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(LineVertex), reinterpret_cast<void*>(offsetof(LineVertex, Color)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(FLineVertex), nullptr);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(FLineVertex), reinterpret_cast<void*>(offsetof(FLineVertex, Color)));
 
     glBindVertexArray(0);
 
     return AxisRenderData;
 }
 
-InstancedRenderData GetInstancedRenderData()
+FInstancedRenderData GetInstancedRenderData(std::int32_t InNumInstances)
 {
-    Geometry Geo = GenerateSphere(10);
-    std::vector<glm::mat4> Instances = GenerateInstances(NumInstances);
+    FGeometry Geo = GenerateSphere(10);
+    std::vector<glm::mat4> Instances = GenerateInstances(InNumInstances);
 
     GLuint VertexBuffer, ElementBuffer;
     glGenBuffers(1, &VertexBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, VertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER, Geo.Vertices.size() * sizeof(Vertex), Geo.Vertices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, Geo.Vertices.size() * sizeof(FVertex), Geo.Vertices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     glGenBuffers(1, &ElementBuffer);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ElementBuffer);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, Geo.Indices.size() * sizeof(Triangle), Geo.Indices.data(), GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, Geo.Indices.size() * sizeof(FTriangle), Geo.Indices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 
     GLuint InstancesBuffer;
@@ -762,9 +793,9 @@ InstancedRenderData GetInstancedRenderData()
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
 
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), nullptr);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, Normal)));
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(offsetof(Vertex, UV)));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(FVertex), nullptr);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_TRUE, sizeof(FVertex), reinterpret_cast<void*>(offsetof(FVertex, Normal)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(FVertex), reinterpret_cast<void*>(offsetof(FVertex, UV)));
 
     // configura o array de matrizes nos atributos 3, 4, 5, 6
     glBindBuffer(GL_ARRAY_BUFFER, InstancesBuffer);
@@ -786,7 +817,7 @@ InstancedRenderData GetInstancedRenderData()
 
     glBindVertexArray(0);
 
-    InstancedRenderData InstRenderData;
+    FInstancedRenderData InstRenderData;
     InstRenderData.VAO = InstanceVAO;
     InstRenderData.NumInstances = static_cast<GLuint>(Instances.size());
     InstRenderData.NumElements = static_cast<GLuint>(Geo.Indices.size()) * 3;
@@ -803,20 +834,20 @@ int main()
 
     glfwWindowHint(GLFW_DEPTH_BITS, 32);
 
-    Window = glfwCreateWindow(WindowWidth, WindowHeight, "BlueMarble", nullptr, nullptr);
-    if (!Window)
+    gConfig.Viewport.Window = glfwCreateWindow(gConfig.Viewport.WindowWidth, gConfig.Viewport.WindowHeight, "BlueMarble", nullptr, nullptr);
+    if (!gConfig.Viewport.Window)
     {
         std::cout << "Erro ao criar janela" << std::endl;
         glfwTerminate();
         return EXIT_FAILURE;
     }
 
-    glfwSetFramebufferSizeCallback(Window, ResizeCallback);
-    glfwSetMouseButtonCallback(Window, MouseButtonCallback);
-    glfwSetCursorPosCallback(Window, MouseMotionCallback);
-    glfwSetKeyCallback(Window, KeyCallback);
+    glfwSetFramebufferSizeCallback(gConfig.Viewport.Window, ResizeCallback);
+    glfwSetMouseButtonCallback(gConfig.Viewport.Window, MouseButtonCallback);
+    glfwSetCursorPosCallback(gConfig.Viewport.Window, MouseMotionCallback);
+    glfwSetKeyCallback(gConfig.Viewport.Window, KeyCallback);
 
-    glfwMakeContextCurrent(Window);
+    glfwMakeContextCurrent(gConfig.Viewport.Window);
     glfwSwapInterval(1);
 
     if (!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress))
@@ -842,9 +873,9 @@ int main()
     GLuint InstancedProgramId = LoadShaders("shaders/instanced.vert", "shaders/instanced.frag");
     GLuint AxisProgramId = LoadShaders("shaders/lines.vert", "shaders/lines.frag");
 
-    RenderData AxisRenderData = GetAxisRenderData();
-    RenderData GeoRenderData = GetRenderData();
-    InstancedRenderData InstRenderData = GetInstancedRenderData();
+    FRenderData AxisRenderData = GetAxisRenderData();
+    FRenderData GeoRenderData = GetRenderData();
+    FInstancedRenderData InstRenderData = GetInstancedRenderData(gConfig.Scene.NumInstances);
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -875,16 +906,16 @@ int main()
     GLuint MatricesUBO, LightUBO;
     glGenBuffers(1, &MatricesUBO);
     glBindBuffer(GL_UNIFORM_BUFFER, MatricesUBO);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(UBOMatrices), nullptr, GL_STATIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(FUBOMatrices), nullptr, GL_STATIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
     glGenBuffers(1, &LightUBO);
     glBindBuffer(GL_UNIFORM_BUFFER, LightUBO);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(Light), nullptr, GL_STATIC_DRAW);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(FLight), nullptr, GL_STATIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-    glBindBufferRange(GL_UNIFORM_BUFFER, 0, MatricesUBO, 0, sizeof(UBOMatrices));
-    glBindBufferRange(GL_UNIFORM_BUFFER, 1, LightUBO, 0, sizeof(Light));
+    glBindBufferRange(GL_UNIFORM_BUFFER, 0, MatricesUBO, 0, sizeof(FUBOMatrices));
+    glBindBufferRange(GL_UNIFORM_BUFFER, 1, LightUBO, 0, sizeof(FLight));
 
     {
         const GLuint MatricesUBOIndex = glGetUniformBlockIndex(ProgramId, "Matrices");
@@ -902,16 +933,14 @@ int main()
     // Configura a cor de fundo
     glClearColor(0.1f, 0.1f, 0.1f, 1.0);
 
-    Camera.SetViewportSize(WindowWidth, WindowHeight);
+    gConfig.Scene.Camera.SetViewportSize(gConfig.Viewport.WindowWidth, gConfig.Viewport.WindowHeight);
 
-    double TotalTime = 0.0;
     double TimeSinceLastFrame = 0.0f;
     double PreviousTime = glfwGetTime();
-    std::uint32_t FrameCount = 0;
 
-    while (!glfwWindowShouldClose(Window))
+    while (!glfwWindowShouldClose(gConfig.Viewport.Window))
     {
-        if (bCullFace)
+        if (gConfig.Render.bCullFace)
         {
             glEnable(GL_CULL_FACE);
         }
@@ -924,33 +953,34 @@ int main()
         const double DeltaTime = CurrentTime - PreviousTime;
         if (DeltaTime > 0.0)
         {
-            const double TimeScale = bReverse ? -1.0f : 1.0f;
-            TotalTime += DeltaTime * (bPause ? 0.0f : TimeScale);
+            const double TimeScale = gConfig.Simulation.bReverse ? -1.0f : 1.0f;
+            gConfig.Simulation.TotalTime += DeltaTime * (gConfig.Simulation.bPause ? 0.0f : TimeScale);
             TimeSinceLastFrame += DeltaTime;
             if (TimeSinceLastFrame >= 1.0)
             {
-                const double FramesPerSecond = FrameCount / TimeSinceLastFrame;
+                gConfig.Simulation.FramesPerSecond = gConfig.Simulation.FrameCount / TimeSinceLastFrame;
                 TimeSinceLastFrame = 0.0;
-                FrameCount = 0;
-                const std::string WindowTitle = "BlueMarble - FPS: " + std::to_string(FramesPerSecond);
-                glfwSetWindowTitle(Window, WindowTitle.c_str());
+                gConfig.Simulation.FrameCount = 0;
+                const std::string WindowTitle = "BlueMarble - FPS: " + std::to_string(gConfig.Simulation.FramesPerSecond);
+                glfwSetWindowTitle(gConfig.Viewport.Window, WindowTitle.c_str());
             }
 
-            Camera.Update(static_cast<float>(DeltaTime));
+            gConfig.Scene.Camera.Update(static_cast<float>(DeltaTime));
             PreviousTime = CurrentTime;
         }
 
-        FrameCount++;
+        gConfig.Simulation.FrameCount++;
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        UBOMatrices Matrices = { .View = Camera.GetView(), .Projection = Camera.GetProjection() };
+        FUBOMatrices Matrices = { .View = gConfig.Scene.Camera.GetView(),
+                                 .Projection = gConfig.Scene.Camera.GetProjection() };
 
         glBindBuffer(GL_UNIFORM_BUFFER, MatricesUBO);
-        glBufferData(GL_UNIFORM_BUFFER, sizeof(UBOMatrices), &Matrices, GL_STATIC_DRAW);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(FUBOMatrices), &Matrices, GL_STATIC_DRAW);
 
         glBindBuffer(GL_UNIFORM_BUFFER, LightUBO);
-        glBufferData(GL_UNIFORM_BUFFER, sizeof(Light), &PointLight, GL_STATIC_DRAW);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(FLight), &gConfig.Scene.PointLight, GL_STATIC_DRAW);
 
         {
             glUseProgram(AxisProgramId);
@@ -972,7 +1002,7 @@ int main()
             const glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ModelMatrix));
 
             GLint TimeLoc = glGetUniformLocation(ProgramId, "Time");
-            glUniform1f(TimeLoc, static_cast<GLfloat>(TotalTime));
+            glUniform1f(TimeLoc, static_cast<GLfloat>(gConfig.Simulation.TotalTime));
 
             GLint NormalMatrixLoc = glGetUniformLocation(ProgramId, "NormalMatrix");
             glUniformMatrix4fv(NormalMatrixLoc, 1, GL_FALSE, glm::value_ptr(NormalMatrix));
@@ -992,19 +1022,19 @@ int main()
             GLint CloudsTextureSamplerLoc = glGetUniformLocation(ProgramId, "CloudsTexture");
             glUniform1i(CloudsTextureSamplerLoc, 1);
 
-            glPolygonMode(GL_FRONT_AND_BACK, bShowWireframe ? GL_LINE : GL_FILL);
+            glPolygonMode(GL_FRONT_AND_BACK, gConfig.Render.bShowWireframe ? GL_LINE : GL_FILL);
             glBindVertexArray(GeoRenderData.VAO);
             glDrawElements(GL_TRIANGLES, GeoRenderData.NumElements, GL_UNSIGNED_INT, nullptr);
             glBindVertexArray(0);
         }
 
-        if (true)
+        if (gConfig.Render.bDrawInstances)
         {
             // Render Instanced Data
             glUseProgram(InstancedProgramId);
 
             GLuint TimeLoc = glGetUniformLocation(InstancedProgramId, "Time");
-            glUniform1f(TimeLoc, static_cast<GLfloat>(TotalTime));
+            glUniform1f(TimeLoc, static_cast<GLfloat>(gConfig.Simulation.TotalTime));
 
             GLint NumInstancesLoc = glGetUniformLocation(InstancedProgramId, "NumInstances");
             glUniform1i(NumInstancesLoc, InstRenderData.NumInstances);
@@ -1015,16 +1045,17 @@ int main()
             GLint CloudsTextureSamplerLoc = glGetUniformLocation(InstancedProgramId, "CloudsTexture");
             glUniform1i(CloudsTextureSamplerLoc, 1);
 
+            glPolygonMode(GL_FRONT_AND_BACK, gConfig.Render.bShowWireframe ? GL_LINE : GL_FILL);
             glBindVertexArray(InstRenderData.VAO);
             glDrawElementsInstanced(GL_TRIANGLES, InstRenderData.NumElements, GL_UNSIGNED_INT, nullptr, InstRenderData.NumInstances);
             glBindVertexArray(0);
         }
 
         glfwPollEvents();
-        glfwSwapBuffers(Window);
+        glfwSwapBuffers(gConfig.Viewport.Window);
     }
 
-    glfwDestroyWindow(Window);
+    glfwDestroyWindow(gConfig.Viewport.Window);
     glfwTerminate();
 
     return 0;
