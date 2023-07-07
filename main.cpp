@@ -16,6 +16,10 @@
 #include <glm/ext.hpp>
 #include <glm/gtx/string_cast.hpp>
 
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
@@ -850,6 +854,18 @@ int main()
     glfwMakeContextCurrent(gConfig.Viewport.Window);
     glfwSwapInterval(1);
 
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& Io = ImGui::GetIO();
+    Io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    Io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
+
+    ImGui::StyleColorsDark();
+
+    constexpr bool bInstallCallbacks = true;
+    ImGui_ImplGlfw_InitForOpenGL(gConfig.Viewport.Window, bInstallCallbacks);
+    ImGui_ImplOpenGL3_Init();
+
     if (!gladLoadGLLoader((GLADloadproc) glfwGetProcAddress))
     {
         std::cout << "Erro ao inicializar o GLAD" << std::endl;
@@ -867,6 +883,8 @@ int main()
     std::cout << "OpenGL Renderer : " << glGetString(GL_RENDERER) << std::endl;
     std::cout << "OpenGL Version  : " << glGetString(GL_VERSION) << std::endl;
     std::cout << "GLSL Version    : " << glGetString(GL_SHADING_LANGUAGE_VERSION) << std::endl;
+    std::cout << "glfw Version    : " << glfwGetVersionString() << std::endl;
+    std::cout << "ImGui Version   : " << IMGUI_VERSION << std::endl;
 
     // Compilar o vertex e o fragment shader
     GLuint ProgramId = LoadShaders("shaders/triangle.vert", "shaders/triangle.frag");
@@ -940,6 +958,14 @@ int main()
 
     while (!glfwWindowShouldClose(gConfig.Viewport.Window))
     {
+        glfwPollEvents();
+
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        ImGui::ShowDemoWindow();
+
         if (gConfig.Render.bCullFace)
         {
             glEnable(GL_CULL_FACE);
@@ -1051,7 +1077,9 @@ int main()
             glBindVertexArray(0);
         }
 
-        glfwPollEvents();
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
         glfwSwapBuffers(gConfig.Viewport.Window);
     }
 

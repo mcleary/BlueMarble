@@ -9,3 +9,4 @@ if ($null -eq (Get-Command "vcpkg" -ErrorAction SilentlyContinue))
 & vcpkg install glfw3:x64-windows
 & vcpkg install glm:x64-windows
 & vcpkg install stb:x64-windows
+& vcpkg install imgui[opengl3-binding, glfw-binding]:x64-windows
