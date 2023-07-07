@@ -89,7 +89,7 @@ struct FSimulationConfig
     double TotalTime = 0.0f;
     double FramesPerSecond = 0.0f;
     std::uint32_t FrameCount = 0;
-    std::int32_t TotalFrames = 0;
+    std::uint32_t TotalFrames = 0;
 };
 
 struct FRenderConfig
@@ -119,12 +119,25 @@ struct FSceneConfig
     FLight PointLight;
 };
 
+struct FMouse
+{
+    glm::ivec2 PreviousMousePos = { -1, -1 };
+    glm::ivec2 MousePos;
+    glm::ivec2 MouseDelta = { 0, 0 };
+};
+
+struct FInputConfig
+{
+    FMouse Mouse;
+};
+
 struct FConfig
 {
     FSimulationConfig Simulation;
     FRenderConfig Render;
     FSceneConfig Scene;
     FViewportConfig Viewport;
+    FInputConfig Input;
 };
 
 FConfig gConfig;
@@ -559,6 +572,19 @@ void MouseMotionCallback(GLFWwindow* Window, double X, double Y)
     if (ImGui::GetIO().WantCaptureMouse)
     {
         return;
+    }
+
+    glm::ivec2 CurrentPos = { static_cast<std::int32_t>(X), static_cast<std::int32_t>(Y) };
+
+    if (gConfig.Input.Mouse.PreviousMousePos == glm::ivec2{ -1, -1 })
+    {
+        gConfig.Input.Mouse.PreviousMousePos = { static_cast<std::int32_t>(X), static_cast<std::int32_t>(Y) };
+    }
+    else
+    {
+        gConfig.Input.Mouse.MousePos = { static_cast<std::int32_t>(X), static_cast<std::int32_t>(Y) };
+        gConfig.Input.Mouse.MouseDelta = gConfig.Input.Mouse.MousePos - gConfig.Input.Mouse.PreviousMousePos;
+        gConfig.Input.Mouse.PreviousMousePos = gConfig.Input.Mouse.MousePos;
     }
 
     gConfig.Scene.Camera.MouseMove(static_cast<float>(X), static_cast<float>(Y));
@@ -1001,21 +1027,10 @@ int main()
                 ImGui::Checkbox("Pause", &gConfig.Simulation.bPause);
                 ImGui::Checkbox("Reverse", &gConfig.Simulation.bReverse);
 
-                ImGui::Text("Time: ");
-                ImGui::SameLine();
-                ImGui::Text(std::to_string(gConfig.Simulation.TotalTime).c_str());
-
-                ImGui::Text("Frame Count: ");
-                ImGui::SameLine();
-                ImGui::Text(std::to_string(gConfig.Simulation.FrameCount).c_str());
-
-                ImGui::Text("FPS: ");
-                ImGui::SameLine();
-                ImGui::Text(std::to_string(gConfig.Simulation.FramesPerSecond).c_str());
-
-                ImGui::Text("Frames: ");
-                ImGui::SameLine();
-                ImGui::Text(std::to_string(gConfig.Simulation.TotalFrames).c_str());
+                ImGui::Text("Time        : %f", gConfig.Simulation.TotalTime);
+                ImGui::Text("Frame Count : %d", gConfig.Simulation.FrameCount);
+                ImGui::Text("FPS         : %f", gConfig.Simulation.FramesPerSecond);
+                ImGui::Text("Frames:     : %d", gConfig.Simulation.TotalFrames);
             }
 
             if (ImGui::CollapsingHeader("Scene"))
@@ -1035,6 +1050,38 @@ int main()
                 ImGui::SeparatorText("Light");
                 ImGui::DragFloat3("Light Position", glm::value_ptr(gConfig.Scene.PointLight.Position), 0.1f);
                 ImGui::DragFloat("Intensity", &gConfig.Scene.PointLight.Intensity, 0.1f);
+            }
+
+            if (ImGui::CollapsingHeader("Viewport"))
+            {
+                ImGui::SeparatorText("Window");
+                ImGui::Text("Width  : %d", gConfig.Viewport.WindowWidth);
+                ImGui::Text("Height : %d", gConfig.Viewport.WindowHeight);
+
+                if (ImGui::CollapsingHeader("Input"))
+                {
+                    ImGui::Text("Mouse Position: (%d, %d)", gConfig.Input.Mouse.MousePos.x, gConfig.Input.Mouse.MousePos.y);
+                    ImGui::Text("Mouse Delta   : (%d, %d)", gConfig.Input.Mouse.MouseDelta.x, gConfig.Input.Mouse.MouseDelta.y);
+
+                    if (ImGui::IsMousePosValid())
+                    {
+                        ImGui::Text("Mouse pos: (%g, %g)", ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y);
+                    }
+                    else
+                    {
+                        ImGui::Text("Mouse pos: <INVALID>");
+                    }
+                    ImGui::Text("Mouse delta: (%g, %g)", ImGui::GetIO().MouseDelta.x, ImGui::GetIO().MouseDelta.y);
+                    ImGui::Text("Mouse down:");
+                    for (std::int32_t Index = 0; Index < IM_ARRAYSIZE(ImGui::GetIO().MouseDown); Index++)
+                    {
+                        if (ImGui::IsMouseDown(Index))
+                        {
+                            ImGui::SameLine(); ImGui::Text("b%d (%.02f secs)", Index, ImGui::GetIO().MouseDownDuration[Index]);
+                        }
+                    }
+                    ImGui::Text("Mouse wheel: %.1f", ImGui::GetIO().MouseWheel);
+                }
             }
         }
         ImGui::End();
