@@ -99,6 +99,7 @@ struct FRenderConfig
     bool bDrawAxis = true;
     bool bDrawObject = true;
     bool bDrawInstances = true;
+    bool bEnableVsync = true;
 };
 
 struct FViewportConfig
@@ -867,7 +868,6 @@ int main()
     glfwSetKeyCallback(gConfig.Viewport.Window, KeyCallback);
 
     glfwMakeContextCurrent(gConfig.Viewport.Window);
-    glfwSwapInterval(1);
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -993,10 +993,34 @@ int main()
                 ImGui::SeparatorText("Rendering");
                 ImGui::Checkbox("Cull Face", &gConfig.Render.bCullFace);
                 ImGui::Checkbox("Wireframe", &gConfig.Render.bShowWireframe);
+                ImGui::Checkbox("VSync", &gConfig.Render.bEnableVsync);
+            }
+
+            if (ImGui::CollapsingHeader("Simulation"))
+            {
+                ImGui::Checkbox("Pause", &gConfig.Simulation.bPause);
+                ImGui::Checkbox("Reverse", &gConfig.Simulation.bReverse);
+
+                ImGui::Text("Time: ");
+                ImGui::SameLine();
+                ImGui::Text(std::to_string(gConfig.Simulation.TotalTime).c_str());
+
+                ImGui::Text("Frame Count: ");
+                ImGui::SameLine();
+                ImGui::Text(std::to_string(gConfig.Simulation.FrameCount).c_str());
+
+                ImGui::Text("FPS: ");
+                ImGui::SameLine();
+                ImGui::Text(std::to_string(gConfig.Simulation.FramesPerSecond).c_str());
+
+                ImGui::Text("Frames: ");
+                ImGui::SameLine();
+                ImGui::Text(std::to_string(gConfig.Simulation.TotalFrames).c_str());
             }
 
             if (ImGui::CollapsingHeader("Scene"))
             {
+                ImGui::SeparatorText("Drawables");
                 ImGui::DragInt("Num Instances", &gConfig.Scene.NumInstances, 1000.0f, 0, 1'000'000);
 
                 ImGui::SeparatorText("Camera");
@@ -1014,6 +1038,8 @@ int main()
             }
         }
         ImGui::End();
+
+        glfwSwapInterval(gConfig.Render.bEnableVsync);
 
         if (gConfig.Render.bCullFace)
         {
