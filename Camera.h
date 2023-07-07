@@ -27,7 +27,7 @@ public:
 
     bool bIsOrtho = false;
 
-	float FieldOfView = glm::radians(45.0f);
+	float FieldOfView = 45.0f;
 	float AspectRatio = 1.0f;
 
     float Left = 0.0f;

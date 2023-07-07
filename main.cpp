@@ -112,7 +112,7 @@ struct FSceneConfig
 {
     static constexpr ESceneType SceneType = ESceneType::BlueMarble;
     static constexpr GLuint SphereResolution = 100;
-    static constexpr GLuint NumInstances = 500'000;
+    std::int32_t NumInstances = 500'000;
 
     SimpleCamera Camera;
     FLight PointLight;
@@ -527,6 +527,11 @@ std::map<std::string, GLint> LoadTextures(const std::vector<std::string>& InText
 
 void MouseButtonCallback(GLFWwindow* Window, std::int32_t Button, std::int32_t Action, std::int32_t Modifiers)
 {
+    if (ImGui::GetIO().WantCaptureMouse)
+    {
+        return;
+    }
+
     if (Button == GLFW_MOUSE_BUTTON_LEFT)
     {
         if (Action == GLFW_PRESS)
@@ -550,6 +555,11 @@ void MouseButtonCallback(GLFWwindow* Window, std::int32_t Button, std::int32_t A
 
 void MouseMotionCallback(GLFWwindow* Window, double X, double Y)
 {
+    if (ImGui::GetIO().WantCaptureMouse)
+    {
+        return;
+    }
+
     gConfig.Scene.Camera.MouseMove(static_cast<float>(X), static_cast<float>(Y));
 
     if (gConfig.Scene.SceneType == ESceneType::Ortho)
@@ -561,6 +571,11 @@ void MouseMotionCallback(GLFWwindow* Window, double X, double Y)
 
 void KeyCallback(GLFWwindow* Window, std::int32_t Key, std::int32_t ScanCode, std::int32_t Action, std::int32_t Modifers)
 {
+    if (ImGui::GetIO().WantCaptureKeyboard)
+    {
+        return;
+    }
+
     if (Action == GLFW_PRESS)
     {
         switch (Key)
@@ -966,6 +981,40 @@ int main()
 
         ImGui::ShowDemoWindow();
 
+        ImGui::Begin("BlueMarble Config");
+        {
+            if (ImGui::CollapsingHeader("Render"))
+            {
+                ImGui::SeparatorText("Drawing");
+                ImGui::Checkbox("Axis", &gConfig.Render.bDrawAxis);
+                ImGui::Checkbox("Instances", &gConfig.Render.bDrawInstances);
+                ImGui::Checkbox("Object", &gConfig.Render.bDrawObject);
+
+                ImGui::SeparatorText("Rendering");
+                ImGui::Checkbox("Cull Face", &gConfig.Render.bCullFace);
+                ImGui::Checkbox("Wireframe", &gConfig.Render.bShowWireframe);
+            }
+
+            if (ImGui::CollapsingHeader("Scene"))
+            {
+                ImGui::DragInt("Num Instances", &gConfig.Scene.NumInstances, 1000.0f, 0, 1'000'000);
+
+                ImGui::SeparatorText("Camera");
+                ImGui::DragFloat3("Camera Location", glm::value_ptr(gConfig.Scene.Camera.Location), 0.1f);
+                ImGui::DragFloat3("Camera Direction", glm::value_ptr(gConfig.Scene.Camera.Direction), 0.05f);
+                ImGui::DragFloat3("Camera Orientation", glm::value_ptr(gConfig.Scene.Camera.Up), 0.05f);
+                ImGui::DragFloat("Camera Near", &gConfig.Scene.Camera.Near, 0.05f, 0.0001f);
+                ImGui::DragFloat("Camera Far", &gConfig.Scene.Camera.Far, 0.05f, 0.0001f);
+                ImGui::DragFloat("Camera Field Of View", &gConfig.Scene.Camera.FieldOfView, 0.05f, 0.1f);
+                ImGui::Checkbox("Camera Orthographic", &gConfig.Scene.Camera.bIsOrtho);
+
+                ImGui::SeparatorText("Light");
+                ImGui::DragFloat3("Light Position", glm::value_ptr(gConfig.Scene.PointLight.Position), 0.1f);
+                ImGui::DragFloat("Intensity", &gConfig.Scene.PointLight.Intensity, 0.1f);
+            }
+        }
+        ImGui::End();
+
         if (gConfig.Render.bCullFace)
         {
             glEnable(GL_CULL_FACE);
@@ -1008,6 +1057,7 @@ int main()
         glBindBuffer(GL_UNIFORM_BUFFER, LightUBO);
         glBufferData(GL_UNIFORM_BUFFER, sizeof(FLight), &gConfig.Scene.PointLight, GL_STATIC_DRAW);
 
+        if (gConfig.Render.bDrawAxis)
         {
             glUseProgram(AxisProgramId);
 
@@ -1021,6 +1071,7 @@ int main()
             glBindVertexArray(0);
         }
 
+        if (gConfig.Render.bDrawObject)
         {
             glUseProgram(ProgramId);
 
@@ -1073,7 +1124,7 @@ int main()
 
             glPolygonMode(GL_FRONT_AND_BACK, gConfig.Render.bShowWireframe ? GL_LINE : GL_FILL);
             glBindVertexArray(InstRenderData.VAO);
-            glDrawElementsInstanced(GL_TRIANGLES, InstRenderData.NumElements, GL_UNSIGNED_INT, nullptr, InstRenderData.NumInstances);
+            glDrawElementsInstanced(GL_TRIANGLES, InstRenderData.NumElements, GL_UNSIGNED_INT, nullptr, std::min(static_cast<GLuint>(InstRenderData.NumInstances), static_cast<GLuint>(gConfig.Scene.NumInstances)));
             glBindVertexArray(0);
         }
 

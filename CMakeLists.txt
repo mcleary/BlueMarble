@@ -20,6 +20,11 @@ target_link_libraries(BlueMarble PRIVATE glad::glad
                                          glm::glm
                                          imgui::imgui)
 
+if (WIN32)
+    target_compile_options(BlueMarble PRIVATE "/ZI")
+    target_link_options(BlueMarble PRIVATE "/SAFESH:NO")
+endif()
+
 add_custom_target(CopyResources
                   COMMENT "Copying Resources ..."
                   COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different "${CMAKE_SOURCE_DIR}/shaders" "${CMAKE_BINARY_DIR}/shaders"

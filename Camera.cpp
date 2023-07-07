@@ -82,7 +82,7 @@ glm::mat4 SimpleCamera::GetProjection()
     }
     else
     {
-        Projection = glm::perspective(FieldOfView, AspectRatio, Near, Far);
+        Projection = glm::perspective(glm::radians(FieldOfView), AspectRatio, Near, Far);
     }
 
 	return Projection;
