@@ -7,6 +7,7 @@
 #include <future>
 #include <thread>
 #include <functional>
+#include <numeric>
 
 #include <glad/glad.h>
 
@@ -88,8 +89,15 @@ struct FSimulationConfig
     bool bReverse = false;
     double TotalTime = 0.0f;
     double FramesPerSecond = 0.0f;
+    double FrameTime = 0.0f;
     std::uint32_t FrameCount = 0;
     std::uint32_t TotalFrames = 0;
+
+    std::vector<float> FrameTimeHistory;
+    std::vector<float> FramesPerSecondHistory;
+
+    std::uint32_t NumFramePlotValues = 120;
+    std::uint32_t FramePlotOffset = 0;
 };
 
 struct FRenderConfig
@@ -276,10 +284,10 @@ FGeometry GenerateQuad()
     constexpr glm::vec3 Normal = { 0.0f, 0.0f, 1.0f };
     QuadGeometry.Vertices =
     {
-        FVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Normal = Normal, .UV = { 0.0f, 1.0f } },
-        FVertex{ .Position = { 1.0f, 0.0f, 0.0f }, .Normal = Normal, .UV = { 1.0f, 1.0f } },
-        FVertex{ .Position = { 1.0f, 1.0f, 0.0f }, .Normal = Normal, .UV = { 1.0f, 0.0f } },
-        FVertex{ .Position = { 0.0f, 1.0f, 0.0f }, .Normal = Normal, .UV = { 0.0f, 0.0f } },
+        FVertex{.Position = { 0.0f, 0.0f, 0.0f }, .Normal = Normal, .UV = { 0.0f, 1.0f } },
+        FVertex{.Position = { 1.0f, 0.0f, 0.0f }, .Normal = Normal, .UV = { 1.0f, 1.0f } },
+        FVertex{.Position = { 1.0f, 1.0f, 0.0f }, .Normal = Normal, .UV = { 1.0f, 0.0f } },
+        FVertex{.Position = { 0.0f, 1.0f, 0.0f }, .Normal = Normal, .UV = { 0.0f, 0.0f } },
     };
     QuadGeometry.Indices =
     {
@@ -311,7 +319,7 @@ std::vector<glm::mat4> GenerateInstances(GLuint InNumInstances)
 
         const float X = Radius * glm::sin(Angle);
         // const float Y = NormalDistribution(Generator);
-        float Y = Index / (float)InNumInstances;
+        float Y = Index / (float) InNumInstances;
         Y += NormalDistribution(Generator) * 0.5f;
         const float Z = Radius * glm::cos(Angle);
 
@@ -769,14 +777,14 @@ FRenderData GetAxisRenderData()
 {
     const std::array<FLineVertex, 6> Vertices =
     {
-        FLineVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Color = { 1.0f, 0.0f, 0.0f } },
-        FLineVertex{ .Position = { 10.0f, 0.0f, 0.0f }, .Color = { 1.0f, 0.0f, 0.0f } },
+        FLineVertex{.Position = { 0.0f, 0.0f, 0.0f }, .Color = { 1.0f, 0.0f, 0.0f } },
+        FLineVertex{.Position = { 10.0f, 0.0f, 0.0f }, .Color = { 1.0f, 0.0f, 0.0f } },
 
-        FLineVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Color = { 0.0f, 1.0f, 0.0f } },
-        FLineVertex{ .Position = { 0.0f, 10.0f, 0.0f }, .Color = { 0.0f, 1.0f, 0.0f } },
+        FLineVertex{.Position = { 0.0f, 0.0f, 0.0f }, .Color = { 0.0f, 1.0f, 0.0f } },
+        FLineVertex{.Position = { 0.0f, 10.0f, 0.0f }, .Color = { 0.0f, 1.0f, 0.0f } },
 
-        FLineVertex{ .Position = { 0.0f, 0.0f, 0.0f }, .Color = { 0.0f, 0.0f, 1.0f } },
-        FLineVertex{ .Position = { 0.0f, 0.0f, 10.0f }, .Color = { 0.0f, 0.0f, 1.0f } },
+        FLineVertex{.Position = { 0.0f, 0.0f, 0.0f }, .Color = { 0.0f, 0.0f, 1.0f } },
+        FLineVertex{.Position = { 0.0f, 0.0f, 10.0f }, .Color = { 0.0f, 0.0f, 1.0f } },
     };
 
     GLuint VertexBuffer;
@@ -851,10 +859,10 @@ FInstancedRenderData GetInstancedRenderData(std::int32_t InNumInstances)
     glEnableVertexAttribArray(5);
     glEnableVertexAttribArray(6);
 
-    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)0);
-    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4)));
-    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(2 * sizeof(glm::vec4)));
-    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(3 * sizeof(glm::vec4)));
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*) 0);
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*) (sizeof(glm::vec4)));
+    glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*) (2 * sizeof(glm::vec4)));
+    glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*) (3 * sizeof(glm::vec4)));
 
     glVertexAttribDivisor(3, 1);
     glVertexAttribDivisor(4, 1);
@@ -994,6 +1002,9 @@ int main()
 
     gConfig.Scene.Camera.SetViewportSize(gConfig.Viewport.WindowWidth, gConfig.Viewport.WindowHeight);
 
+    gConfig.Simulation.FrameTimeHistory.resize(gConfig.Simulation.NumFramePlotValues);
+    gConfig.Simulation.FrameTimeHistory.resize(gConfig.Simulation.NumFramePlotValues);
+
     double TimeSinceLastFrame = 0.0f;
     double PreviousTime = glfwGetTime();
 
@@ -1027,10 +1038,22 @@ int main()
                 ImGui::Checkbox("Pause", &gConfig.Simulation.bPause);
                 ImGui::Checkbox("Reverse", &gConfig.Simulation.bReverse);
 
-                ImGui::Text("Time        : %f", gConfig.Simulation.TotalTime);
-                ImGui::Text("Frame Count : %d", gConfig.Simulation.FrameCount);
-                ImGui::Text("FPS         : %f", gConfig.Simulation.FramesPerSecond);
-                ImGui::Text("Frames:     : %d", gConfig.Simulation.TotalFrames);
+                ImGui::Text("Time (s)         : %f", gConfig.Simulation.TotalTime);
+                ImGui::Text("Frame Count      : %d", gConfig.Simulation.FrameCount);
+                ImGui::Text("Frmae Time (ms)  : %f", gConfig.Simulation.FrameTime);
+                ImGui::Text("FPS              : %f", gConfig.Simulation.FramesPerSecond);
+                ImGui::Text("Frames:          : %d", gConfig.Simulation.TotalFrames);
+
+                if (ImGui::CollapsingHeader("Plots"))
+                {
+                    const float AverageFrameTime = std::accumulate(gConfig.Simulation.FrameTimeHistory.begin(), gConfig.Simulation.FrameTimeHistory.end(), 0.0f) / gConfig.Simulation.FrameTimeHistory.size();
+                    const std::string AverageFrameTimeOverlay = "Avg: " + std::to_string(AverageFrameTime) + " ms";
+                    ImGui::PlotLines("Frame Times", gConfig.Simulation.FrameTimeHistory.data(), gConfig.Simulation.NumFramePlotValues, gConfig.Simulation.FramePlotOffset, AverageFrameTimeOverlay.c_str(), 0.0f, 100.0f, ImVec2(0, 100.0f));
+
+                    const float AvgFPS = std::accumulate(gConfig.Simulation.FramesPerSecondHistory.begin(), gConfig.Simulation.FramesPerSecondHistory.end(), 0.0f) / gConfig.Simulation.FramesPerSecondHistory.size();
+                    const std::string AverageFPSOverlay = "Avg:" + std::to_string(AvgFPS) + " ms";
+                    ImGui::PlotLines("FPS", gConfig.Simulation.FramesPerSecondHistory.data(), gConfig.Simulation.NumFramePlotValues, gConfig.Simulation.FramePlotOffset, AverageFPSOverlay.c_str(), 0.0f, 300.0f, ImVec2(0, 100.0f));
+                }
             }
 
             if (ImGui::CollapsingHeader("Scene"))
@@ -1057,31 +1080,12 @@ int main()
                 ImGui::SeparatorText("Window");
                 ImGui::Text("Width  : %d", gConfig.Viewport.WindowWidth);
                 ImGui::Text("Height : %d", gConfig.Viewport.WindowHeight);
+            }
 
-                if (ImGui::CollapsingHeader("Input"))
-                {
-                    ImGui::Text("Mouse Position: (%d, %d)", gConfig.Input.Mouse.MousePos.x, gConfig.Input.Mouse.MousePos.y);
-                    ImGui::Text("Mouse Delta   : (%d, %d)", gConfig.Input.Mouse.MouseDelta.x, gConfig.Input.Mouse.MouseDelta.y);
-
-                    if (ImGui::IsMousePosValid())
-                    {
-                        ImGui::Text("Mouse pos: (%g, %g)", ImGui::GetIO().MousePos.x, ImGui::GetIO().MousePos.y);
-                    }
-                    else
-                    {
-                        ImGui::Text("Mouse pos: <INVALID>");
-                    }
-                    ImGui::Text("Mouse delta: (%g, %g)", ImGui::GetIO().MouseDelta.x, ImGui::GetIO().MouseDelta.y);
-                    ImGui::Text("Mouse down:");
-                    for (std::int32_t Index = 0; Index < IM_ARRAYSIZE(ImGui::GetIO().MouseDown); Index++)
-                    {
-                        if (ImGui::IsMouseDown(Index))
-                        {
-                            ImGui::SameLine(); ImGui::Text("b%d (%.02f secs)", Index, ImGui::GetIO().MouseDownDuration[Index]);
-                        }
-                    }
-                    ImGui::Text("Mouse wheel: %.1f", ImGui::GetIO().MouseWheel);
-                }
+            if (ImGui::CollapsingHeader("Input"))
+            {
+                ImGui::Text("Mouse Position: (%d, %d)", gConfig.Input.Mouse.MousePos.x, gConfig.Input.Mouse.MousePos.y);
+                ImGui::Text("Mouse Delta   : (%d, %d)", gConfig.Input.Mouse.MouseDelta.x, gConfig.Input.Mouse.MouseDelta.y);
             }
         }
         ImGui::End();
@@ -1098,13 +1102,22 @@ int main()
         }
 
         const double CurrentTime = glfwGetTime();
-        const double DeltaTime = CurrentTime - PreviousTime;
-        if (DeltaTime > 0.0)
+        gConfig.Simulation.FrameTime = CurrentTime - PreviousTime;
+
+        gConfig.Simulation.FrameTimeHistory.resize(gConfig.Simulation.NumFramePlotValues);
+        gConfig.Simulation.FramesPerSecondHistory.resize(gConfig.Simulation.NumFramePlotValues);
+
+        gConfig.Simulation.FrameTimeHistory[gConfig.Simulation.FramePlotOffset] = static_cast<float>(gConfig.Simulation.FrameTime) * 1000.0f;
+        gConfig.Simulation.FramesPerSecondHistory[gConfig.Simulation.FramePlotOffset] = static_cast<float>(gConfig.Simulation.FramesPerSecond);
+
+        gConfig.Simulation.FramePlotOffset = (gConfig.Simulation.FramePlotOffset + 1) % gConfig.Simulation.NumFramePlotValues;
+
+        if (gConfig.Simulation.FrameTime > 0.0)
         {
-            const double TimeScale = gConfig.Simulation.bReverse ? -1.0f : 1.0f;
-            gConfig.Simulation.TotalTime += DeltaTime * (gConfig.Simulation.bPause ? 0.0f : TimeScale);
-            TimeSinceLastFrame += DeltaTime;
-            if (TimeSinceLastFrame >= 1.0)
+            const double TimeScale = gConfig.Simulation.bReverse ? -1.0 : 1.0;
+            gConfig.Simulation.TotalTime += gConfig.Simulation.FrameTime * (gConfig.Simulation.bPause ? 0.0f : TimeScale);
+            TimeSinceLastFrame += gConfig.Simulation.FrameTime;
+            if (TimeSinceLastFrame >= 1.0f)
             {
                 gConfig.Simulation.FramesPerSecond = gConfig.Simulation.FrameCount / TimeSinceLastFrame;
                 TimeSinceLastFrame = 0.0;
@@ -1113,7 +1126,7 @@ int main()
                 glfwSetWindowTitle(gConfig.Viewport.Window, WindowTitle.c_str());
             }
 
-            gConfig.Scene.Camera.Update(static_cast<float>(DeltaTime));
+            gConfig.Scene.Camera.Update(static_cast<float>(gConfig.Simulation.FrameTime));
             PreviousTime = CurrentTime;
         }
 
@@ -1122,7 +1135,7 @@ int main()
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         FUBOMatrices Matrices = { .View = gConfig.Scene.Camera.GetView(),
-                                 .Projection = gConfig.Scene.Camera.GetProjection() };
+            .Projection = gConfig.Scene.Camera.GetProjection() };
 
         glBindBuffer(GL_UNIFORM_BUFFER, MatricesUBO);
         glBufferData(GL_UNIFORM_BUFFER, sizeof(FUBOMatrices), &Matrices, GL_STATIC_DRAW);
@@ -1205,6 +1218,9 @@ int main()
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
         glfwSwapBuffers(gConfig.Viewport.Window);
+
+        // O Mouse Delta precisa ser resetado aqui ou ele fica com o valor acumulado do frame anterior
+        gConfig.Input.Mouse.MouseDelta = { 0, 0 };
     }
 
     glfwDestroyWindow(gConfig.Viewport.Window);
