@@ -25,6 +25,7 @@
 #include <stb_image.h>
 
 #include "Camera.h"
+#include "DirectoryWatcher.h"
 
 enum class ESceneType
 {
