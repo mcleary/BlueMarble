@@ -1,14 +1,11 @@
 #include "DirectoryWatcher.h"
 
-#include <iostream>
-#include <filesystem>
-
 #include <Windows.h>
 
-FDirectoryWatcher::FDirectoryWatcher(const std::string& InDirToWatch)
+FDirectoryWatcher::FDirectoryWatcher(const std::filesystem::path& InDirToWatch)
     : DirToWatch{ InDirToWatch }
 {
-    DirHandle = CreateFile(InDirToWatch.c_str(),
+    DirHandle = CreateFile((std::filesystem::current_path() / InDirToWatch).string().c_str(),
                            FILE_LIST_DIRECTORY,
                            FILE_SHARE_READ | FILE_SHARE_WRITE,
                            NULL,
@@ -18,16 +15,16 @@ FDirectoryWatcher::FDirectoryWatcher(const std::string& InDirToWatch)
     WorkerThread = std::thread([&]
     {
         DWORD BytesReturned;
-        FILE_NOTIFY_INFORMATION Buffer[1024];
+        std::uint8_t Buffer[1024];
         while (bShouldWatch)
         {
             bIsWaiting = true;
             if (ReadDirectoryChangesW(DirHandle, Buffer, sizeof(Buffer), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE, &BytesReturned, NULL, NULL) == TRUE)
             {
-                FILE_NOTIFY_INFORMATION* Info = &Buffer[0];
+                std::uint32_t Offset = 0;
                 do
                 {
-                    Info = (FILE_NOTIFY_INFORMATION*) ((std::uint8_t*)&Buffer[0]) + Info->NextEntryOffset;
+                    FILE_NOTIFY_INFORMATION* Info = (FILE_NOTIFY_INFORMATION*) &Buffer[Offset];
 
                     switch (Info->Action)
                     {
@@ -38,14 +35,16 @@ FDirectoryWatcher::FDirectoryWatcher(const std::string& InDirToWatch)
 
                             {
                                 std::lock_guard Lock{ FilesChangedMutex };
-                                FilesChanged.insert((std::filesystem::path{ DirToWatch } / FilePath).string());
+                                FilesChanged.insert((std::filesystem::current_path() / std::filesystem::path{ DirToWatch } / FilePath));
                             }
 
                             break;
                         }
                     }
+
+                    Offset = Info->NextEntryOffset;
                 }
-                while (Info->NextEntryOffset != 0);
+                while (Offset != 0);
             }
             bIsWaiting = false;
         }
@@ -60,12 +59,13 @@ FDirectoryWatcher::~FDirectoryWatcher()
         CancelIoEx(DirHandle, NULL);
     }
     WorkerThread.join();
+    CloseHandle(DirHandle);
 }
 
-std::set<std::string> FDirectoryWatcher::GetChangedFiles()
+std::set<std::filesystem::path> FDirectoryWatcher::GetChangedFiles()
 {
     std::lock_guard Lock{ FilesChangedMutex };
-    std::set<std::string> ChangedFiles = FilesChanged;
+    std::set<std::filesystem::path> ChangedFiles = FilesChanged;
     FilesChanged.clear();
     return ChangedFiles;
 }

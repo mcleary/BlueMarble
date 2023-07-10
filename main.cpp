@@ -8,6 +8,7 @@
 #include <thread>
 #include <functional>
 #include <numeric>
+#include <filesystem>
 
 #include <glad/glad.h>
 
@@ -331,12 +332,10 @@ std::vector<glm::mat4> GenerateInstances(GLuint InNumInstances)
         ModelMatrices.emplace_back(InstanceMatrix);
     }
 
-    // std::shuffle(ModelMatrices.begin(), ModelMatrices.end(), Generator);
-
     return ModelMatrices;
 }
 
-std::string ReadFile(const char* FilePath)
+std::string ReadFile(const std::string& FilePath)
 {
     std::string FileContents;
     if (std::ifstream FileStream{ FilePath, std::ios::in })
@@ -383,8 +382,6 @@ void CheckShader(GLuint ShaderId)
 
             std::cout << "Erro no " << ShaderTypeStr << " Shader: " << std::endl;
             std::cout << ShaderInfoLog << std::endl;
-
-            assert(false);
         }
     }
 }
@@ -439,12 +436,6 @@ GLuint LoadShaders(const char* VertexShaderFile, const char* FragmentShaderFile)
             assert(false);
         }
     }
-
-    glDetachShader(ProgramId, VertShaderId);
-    glDetachShader(ProgramId, FragShaderId);
-
-    glDeleteShader(VertShaderId);
-    glDeleteShader(FragShaderId);
 
     return ProgramId;
 }
@@ -879,6 +870,319 @@ FInstancedRenderData GetInstancedRenderData(std::int32_t InNumInstances)
     return InstRenderData;
 }
 
+class FShaderManager
+{
+public:
+
+    bool IsShaderValid(GLuint InShaderId)
+    {
+        // Verificar se o shader foi compilado
+        GLint Result = GL_TRUE;
+        glGetShaderiv(InShaderId, GL_COMPILE_STATUS, &Result);
+
+        if (Result == GL_FALSE)
+        {
+            // Erro ao compilar o shader, imprimir o log para saber o que está errado
+            GLint InfoLogLength = 0;
+            glGetShaderiv(InShaderId, GL_INFO_LOG_LENGTH, &InfoLogLength);
+
+            if (InfoLogLength > 0)
+            {
+                GLint ShaderType = 0;
+                glGetShaderiv(InShaderId, GL_SHADER_TYPE, &ShaderType);
+
+                std::string ShaderInfoLog(InfoLogLength, '\0');
+                glGetShaderInfoLog(InShaderId, InfoLogLength, nullptr, &ShaderInfoLog[0]);
+
+                std::string_view ShaderTypeStr;
+                switch (ShaderType)
+                {
+                    case GL_VERTEX_SHADER:
+                        ShaderTypeStr = "Vertex";
+                        break;
+
+                    case GL_FRAGMENT_SHADER:
+                        ShaderTypeStr = "Fragment";
+                        break;
+
+                    default:
+                        assert(false);
+                }
+
+                std::cout << "Erro no " << ShaderTypeStr << " Shader: " << std::endl;
+                std::cout << ShaderInfoLog << std::endl;
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool IsProgramValid(GLuint InProgramId)
+    {
+        // Verificar o programa
+        GLint LinkStatus = GL_TRUE;
+        GLint ValidateStatus = GL_TRUE;
+        glGetProgramiv(InProgramId, GL_LINK_STATUS, &LinkStatus);
+        glGetProgramiv(InProgramId, GL_VALIDATE_STATUS, &ValidateStatus);
+
+        if (LinkStatus == GL_FALSE || ValidateStatus == GL_FALSE)
+        {
+            GLint InfoLogLength = 0;
+            glGetProgramiv(InProgramId, GL_INFO_LOG_LENGTH, &InfoLogLength);
+
+            if (InfoLogLength > 0)
+            {
+                std::string ProgramInfoLog(InfoLogLength, '\0');
+                glGetProgramInfoLog(InProgramId, InfoLogLength, nullptr, &ProgramInfoLog[0]);
+
+                std::cout << "Erro ao linkar programa" << std::endl;
+                std::cout << ProgramInfoLog << std::endl;
+
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    std::shared_ptr<GLuint> AddShader(const std::string& InVertexShaderFile, const std::string& InFragmentShaderFile)
+    {
+        const std::filesystem::path AbsoluteVertexShaderFile = std::filesystem::current_path() / InVertexShaderFile;
+        const std::filesystem::path AbsoluteFragShaderFile = std::filesystem::current_path() / InFragmentShaderFile;
+
+        std::shared_ptr<GLuint> ProgramId = std::make_shared<GLuint>(-1);
+
+        // Criar os identificadores de cada um dos shaders
+        GLuint VertShaderId = glCreateShader(GL_VERTEX_SHADER);
+        GLuint FragShaderId = glCreateShader(GL_FRAGMENT_SHADER);
+
+        std::string VertexShaderSource = ReadFile(AbsoluteVertexShaderFile.string());
+        std::string FragmentShaderSource = ReadFile(AbsoluteFragShaderFile.string());
+
+        assert(!VertexShaderSource.empty());
+        assert(!FragmentShaderSource.empty());
+
+        std::cout << "Compilando " << AbsoluteVertexShaderFile << std::endl;
+        const char* VertexShaderSourcePtr = VertexShaderSource.c_str();
+        glShaderSource(VertShaderId, 1, &VertexShaderSourcePtr, nullptr);
+        glCompileShader(VertShaderId);
+
+        std::cout << "Compilando " << AbsoluteFragShaderFile << std::endl;
+        const char* FragmentShaderSourcePtr = FragmentShaderSource.c_str();
+        glShaderSource(FragShaderId, 1, &FragmentShaderSourcePtr, nullptr);
+        glCompileShader(FragShaderId);
+
+        if (IsShaderValid(VertShaderId) && IsShaderValid(FragShaderId))
+        {
+            std::cout << "Linkando Programa" << std::endl;
+            *ProgramId = glCreateProgram();
+            glAttachShader(*ProgramId, VertShaderId);
+            glAttachShader(*ProgramId, FragShaderId);
+            glLinkProgram(*ProgramId);
+
+            if (IsProgramValid(*ProgramId))
+            {
+                ShaderMap[ProgramId] = { AbsoluteVertexShaderFile, AbsoluteFragShaderFile };
+            }
+        }
+
+        return ProgramId;
+    }
+
+    void UpdateShaders()
+    {
+        std::set<std::filesystem::path> ChangedFiles = DirWatcher.GetChangedFiles();
+        if (!ChangedFiles.empty())
+        {
+            for (const std::filesystem::path& ShaderFile : ChangedFiles)
+            {
+                auto ShaderIt = std::find_if(ShaderMap.begin(), ShaderMap.end(), [ShaderFile](const std::pair<std::shared_ptr<GLuint>, std::pair<std::filesystem::path, std::filesystem::path>>& ShaderMapPair)
+                {
+                    const std::pair<std::filesystem::path, std::filesystem::path> ShaderFilePair = ShaderMapPair.second;
+                    return ShaderFilePair.first == ShaderFile || ShaderFilePair.second == ShaderFile;
+                });
+                if (ShaderIt != ShaderMap.end())
+                {
+                    std::shared_ptr<GLuint> ProgramId = ShaderIt->first;
+                    const std::filesystem::path& VertexShaderFile = ShaderIt->second.first;
+                    const std::filesystem::path& FragmentShaderFile = ShaderIt->second.second;
+
+                    // Criar os identificadores de cada um dos shaders
+                    GLuint VertShaderId = glCreateShader(GL_VERTEX_SHADER);
+                    GLuint FragShaderId = glCreateShader(GL_FRAGMENT_SHADER);
+
+                    std::string VertexShaderSource = ReadFile(VertexShaderFile.string());
+                    std::string FragmentShaderSource = ReadFile(FragmentShaderFile.string());
+
+                    std::cout << "Compilando " << VertexShaderFile << std::endl;
+                    const char* VertexShaderSourcePtr = VertexShaderSource.c_str();
+                    glShaderSource(VertShaderId, 1, &VertexShaderSourcePtr, nullptr);
+                    glCompileShader(VertShaderId);
+
+                    std::cout << "Compilando " << FragmentShaderFile << std::endl;
+                    const char* FragmentShaderSourcePtr = FragmentShaderSource.c_str();
+                    glShaderSource(FragShaderId, 1, &FragmentShaderSourcePtr, nullptr);
+                    glCompileShader(FragShaderId);
+
+                    if (IsShaderValid(VertShaderId) && IsShaderValid(FragShaderId))
+                    {
+                        std::cout << "Linkando Programa" << std::endl;
+                        *ProgramId = glCreateProgram();
+                        glAttachShader(*ProgramId, VertShaderId);
+                        glAttachShader(*ProgramId, FragShaderId);
+                        glLinkProgram(*ProgramId);
+                        glValidateProgram(*ProgramId);
+                        IsProgramValid(*ProgramId);
+
+                        glDetachShader(*ProgramId, VertShaderId);
+                        glDetachShader(*ProgramId, FragShaderId);
+
+                        glDeleteShader(VertShaderId);
+                        glDeleteShader(FragShaderId);
+                    }
+                }
+            }
+        }
+    }
+
+private:
+    FDirectoryWatcher DirWatcher{ "shaders" };
+    std::map<std::shared_ptr<GLuint>, std::pair<std::filesystem::path, std::filesystem::path>> ShaderMap;
+};
+
+void APIENTRY glDebugOutput(GLenum source,
+                            GLenum type,
+                            unsigned int id,
+                            GLenum severity,
+                            GLsizei length,
+                            const char* message,
+                            const void* userParam)
+{
+    // ignore non-significant error/warning codes
+    if (id == 131169 || id == 131185 || id == 131218 || id == 131204) return;
+
+    std::cout << "---------------" << std::endl;
+    std::cout << "Debug message (" << id << "): " << message << std::endl;
+
+    switch (source)
+    {
+        case GL_DEBUG_SOURCE_API:             std::cout << "Source: API"; break;
+        case GL_DEBUG_SOURCE_WINDOW_SYSTEM:   std::cout << "Source: Window System"; break;
+        case GL_DEBUG_SOURCE_SHADER_COMPILER: std::cout << "Source: Shader Compiler"; break;
+        case GL_DEBUG_SOURCE_THIRD_PARTY:     std::cout << "Source: Third Party"; break;
+        case GL_DEBUG_SOURCE_APPLICATION:     std::cout << "Source: Application"; break;
+        case GL_DEBUG_SOURCE_OTHER:           std::cout << "Source: Other"; break;
+    } std::cout << std::endl;
+
+    switch (type)
+    {
+        case GL_DEBUG_TYPE_ERROR:               std::cout << "Type: Error"; break;
+        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR: std::cout << "Type: Deprecated Behaviour"; break;
+        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:  std::cout << "Type: Undefined Behaviour"; break;
+        case GL_DEBUG_TYPE_PORTABILITY:         std::cout << "Type: Portability"; break;
+        case GL_DEBUG_TYPE_PERFORMANCE:         std::cout << "Type: Performance"; break;
+        case GL_DEBUG_TYPE_MARKER:              std::cout << "Type: Marker"; break;
+        case GL_DEBUG_TYPE_PUSH_GROUP:          std::cout << "Type: Push Group"; break;
+        case GL_DEBUG_TYPE_POP_GROUP:           std::cout << "Type: Pop Group"; break;
+        case GL_DEBUG_TYPE_OTHER:               std::cout << "Type: Other"; break;
+    } std::cout << std::endl;
+
+    switch (severity)
+    {
+        case GL_DEBUG_SEVERITY_HIGH:         std::cout << "Severity: high"; break;
+        case GL_DEBUG_SEVERITY_MEDIUM:       std::cout << "Severity: medium"; break;
+        case GL_DEBUG_SEVERITY_LOW:          std::cout << "Severity: low"; break;
+        case GL_DEBUG_SEVERITY_NOTIFICATION: std::cout << "Severity: notification"; break;
+    } std::cout << std::endl;
+    std::cout << std::endl;
+}
+
+void DrawUI()
+{
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplGlfw_NewFrame();
+    ImGui::NewFrame();
+
+    ImGui::ShowDemoWindow();
+
+    ImGui::Begin("BlueMarble Config");
+    {
+        if (ImGui::CollapsingHeader("Render"))
+        {
+            ImGui::SeparatorText("Drawing");
+            ImGui::Checkbox("Axis", &gConfig.Render.bDrawAxis);
+            ImGui::Checkbox("Instances", &gConfig.Render.bDrawInstances);
+            ImGui::Checkbox("Object", &gConfig.Render.bDrawObject);
+
+            ImGui::SeparatorText("Rendering");
+            ImGui::Checkbox("Cull Face", &gConfig.Render.bCullFace);
+            ImGui::Checkbox("Wireframe", &gConfig.Render.bShowWireframe);
+            ImGui::Checkbox("VSync", &gConfig.Render.bEnableVsync);
+        }
+
+        if (ImGui::CollapsingHeader("Simulation"))
+        {
+            ImGui::Checkbox("Pause", &gConfig.Simulation.bPause);
+            ImGui::Checkbox("Reverse", &gConfig.Simulation.bReverse);
+
+            ImGui::Text("Time (s)         : %f", gConfig.Simulation.TotalTime);
+            ImGui::Text("Frame Count      : %d", gConfig.Simulation.FrameCount);
+            ImGui::Text("Frmae Time (ms)  : %f", gConfig.Simulation.FrameTime);
+            ImGui::Text("FPS              : %f", gConfig.Simulation.FramesPerSecond);
+            ImGui::Text("Frames:          : %d", gConfig.Simulation.TotalFrames);
+
+            if (ImGui::CollapsingHeader("Plots"))
+            {
+                const float AverageFrameTime = std::accumulate(gConfig.Simulation.FrameTimeHistory.begin(), gConfig.Simulation.FrameTimeHistory.end(), 0.0f) / gConfig.Simulation.FrameTimeHistory.size();
+                const std::string AverageFrameTimeOverlay = "Avg: " + std::to_string(AverageFrameTime) + " ms";
+                ImGui::PlotLines("Frame Times", gConfig.Simulation.FrameTimeHistory.data(), gConfig.Simulation.NumFramePlotValues, gConfig.Simulation.FramePlotOffset, AverageFrameTimeOverlay.c_str(), 0.0f, 100.0f, ImVec2(0, 100.0f));
+
+                const float AvgFPS = std::accumulate(gConfig.Simulation.FramesPerSecondHistory.begin(), gConfig.Simulation.FramesPerSecondHistory.end(), 0.0f) / gConfig.Simulation.FramesPerSecondHistory.size();
+                const std::string AverageFPSOverlay = "Avg:" + std::to_string(AvgFPS) + " ms";
+                ImGui::PlotLines("FPS", gConfig.Simulation.FramesPerSecondHistory.data(), gConfig.Simulation.NumFramePlotValues, gConfig.Simulation.FramePlotOffset, AverageFPSOverlay.c_str(), 0.0f, 300.0f, ImVec2(0, 100.0f));
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Scene"))
+        {
+            ImGui::SeparatorText("Drawables");
+            ImGui::DragInt("Num Instances", &gConfig.Scene.NumInstances, 1000.0f, 0, 1'000'000);
+
+            ImGui::SeparatorText("Camera");
+            ImGui::DragFloat3("Camera Location", glm::value_ptr(gConfig.Scene.Camera.Location), 0.1f);
+            ImGui::DragFloat3("Camera Direction", glm::value_ptr(gConfig.Scene.Camera.Direction), 0.05f);
+            ImGui::DragFloat3("Camera Orientation", glm::value_ptr(gConfig.Scene.Camera.Up), 0.05f);
+            ImGui::DragFloat("Camera Near", &gConfig.Scene.Camera.Near, 0.05f, 0.0001f);
+            ImGui::DragFloat("Camera Far", &gConfig.Scene.Camera.Far, 0.05f, 0.0001f);
+            ImGui::DragFloat("Camera Field Of View", &gConfig.Scene.Camera.FieldOfView, 0.05f, 0.1f);
+            ImGui::Checkbox("Camera Orthographic", &gConfig.Scene.Camera.bIsOrtho);
+
+            ImGui::SeparatorText("Light");
+            ImGui::DragFloat3("Light Position", glm::value_ptr(gConfig.Scene.PointLight.Position), 0.1f);
+            ImGui::DragFloat("Intensity", &gConfig.Scene.PointLight.Intensity, 0.1f);
+        }
+
+        if (ImGui::CollapsingHeader("Viewport"))
+        {
+            ImGui::SeparatorText("Window");
+            ImGui::Text("Width  : %d", gConfig.Viewport.WindowWidth);
+            ImGui::Text("Height : %d", gConfig.Viewport.WindowHeight);
+        }
+
+        if (ImGui::CollapsingHeader("Input"))
+        {
+            ImGui::Text("Mouse Position: (%d, %d)", gConfig.Input.Mouse.MousePos.x, gConfig.Input.Mouse.MousePos.y);
+            ImGui::Text("Mouse Delta   : (%d, %d)", gConfig.Input.Mouse.MouseDelta.x, gConfig.Input.Mouse.MouseDelta.y);
+        }
+    }
+    ImGui::End();
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
 int main()
 {
     if (!glfwInit())
@@ -888,6 +1192,9 @@ int main()
     }
 
     glfwWindowHint(GLFW_DEPTH_BITS, 32);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
+    glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, true);
 
     gConfig.Viewport.Window = glfwCreateWindow(gConfig.Viewport.WindowWidth, gConfig.Viewport.WindowHeight, "BlueMarble", nullptr, nullptr);
     if (!gConfig.Viewport.Window)
@@ -923,6 +1230,16 @@ int main()
         return EXIT_FAILURE;
     }
 
+    GLint ContextFlags;
+    glGetIntegerv(GL_CONTEXT_FLAGS, &ContextFlags);
+    if (ContextFlags & GL_CONTEXT_FLAG_DEBUG_BIT)
+    {
+        glEnable(GL_DEBUG_OUTPUT);
+        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+        glDebugMessageCallback(glDebugOutput, nullptr);
+        glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
+    }
+
     // Imprime informações sobre a versão do OpenGL que o programa está usando
     GLint GLMajorVersion = 0;
     GLint GLMinorVersion = 0;
@@ -936,8 +1253,13 @@ int main()
     std::cout << "glfw Version    : " << glfwGetVersionString() << std::endl;
     std::cout << "ImGui Version   : " << IMGUI_VERSION << std::endl;
 
+    FShaderManager ShaderManager;
+
     // Compilar o vertex e o fragment shader
-    GLuint ProgramId = LoadShaders("shaders/triangle.vert", "shaders/triangle.frag");
+    // GLuint ProgramId = LoadShaders("shaders/triangle.vert", "shaders/triangle.frag");
+
+    std::shared_ptr<GLuint> ProgramId = ShaderManager.AddShader("shaders/triangle.vert", "shaders/triangle.frag");
+
     GLuint InstancedProgramId = LoadShaders("shaders/instanced.vert", "shaders/instanced.frag");
     GLuint AxisProgramId = LoadShaders("shaders/lines.vert", "shaders/lines.frag");
 
@@ -985,111 +1307,35 @@ int main()
     glBindBufferRange(GL_UNIFORM_BUFFER, 0, MatricesUBO, 0, sizeof(FUBOMatrices));
     glBindBufferRange(GL_UNIFORM_BUFFER, 1, LightUBO, 0, sizeof(FLight));
 
-    {
-        const GLuint MatricesUBOIndex = glGetUniformBlockIndex(ProgramId, "Matrices");
-        const GLuint LightUBOIndex = glGetUniformBlockIndex(ProgramId, "LightUBO");
-
-        glUniformBlockBinding(ProgramId, MatricesUBOIndex, 0);
-        glUniformBlockBinding(ProgramId, LightUBOIndex, 1);
-    }
-
-    {
-        const GLuint MatricesUBOIndex = glGetUniformBlockIndex(InstancedProgramId, "Matrices");
-        glUniformBlockBinding(InstancedProgramId, MatricesUBOIndex, 0);
-    }
-
     // Configura a cor de fundo
     glClearColor(0.1f, 0.1f, 0.1f, 1.0);
 
     gConfig.Scene.Camera.SetViewportSize(gConfig.Viewport.WindowWidth, gConfig.Viewport.WindowHeight);
 
     gConfig.Simulation.FrameTimeHistory.resize(gConfig.Simulation.NumFramePlotValues);
-    gConfig.Simulation.FrameTimeHistory.resize(gConfig.Simulation.NumFramePlotValues);
+    gConfig.Simulation.FramesPerSecondHistory.resize(gConfig.Simulation.NumFramePlotValues);
 
     double TimeSinceLastFrame = 0.0f;
     double PreviousTime = glfwGetTime();
 
     while (!glfwWindowShouldClose(gConfig.Viewport.Window))
     {
-        glfwPollEvents();
+        ShaderManager.UpdateShaders();
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        ImGui::ShowDemoWindow();
-
-        ImGui::Begin("BlueMarble Config");
         {
-            if (ImGui::CollapsingHeader("Render"))
-            {
-                ImGui::SeparatorText("Drawing");
-                ImGui::Checkbox("Axis", &gConfig.Render.bDrawAxis);
-                ImGui::Checkbox("Instances", &gConfig.Render.bDrawInstances);
-                ImGui::Checkbox("Object", &gConfig.Render.bDrawObject);
+            const GLuint MatricesUBOIndex = glGetUniformBlockIndex(*ProgramId, "Matrices");
+            const GLuint LightUBOIndex = glGetUniformBlockIndex(*ProgramId, "LightUBO");
 
-                ImGui::SeparatorText("Rendering");
-                ImGui::Checkbox("Cull Face", &gConfig.Render.bCullFace);
-                ImGui::Checkbox("Wireframe", &gConfig.Render.bShowWireframe);
-                ImGui::Checkbox("VSync", &gConfig.Render.bEnableVsync);
-            }
-
-            if (ImGui::CollapsingHeader("Simulation"))
-            {
-                ImGui::Checkbox("Pause", &gConfig.Simulation.bPause);
-                ImGui::Checkbox("Reverse", &gConfig.Simulation.bReverse);
-
-                ImGui::Text("Time (s)         : %f", gConfig.Simulation.TotalTime);
-                ImGui::Text("Frame Count      : %d", gConfig.Simulation.FrameCount);
-                ImGui::Text("Frmae Time (ms)  : %f", gConfig.Simulation.FrameTime);
-                ImGui::Text("FPS              : %f", gConfig.Simulation.FramesPerSecond);
-                ImGui::Text("Frames:          : %d", gConfig.Simulation.TotalFrames);
-
-                if (ImGui::CollapsingHeader("Plots"))
-                {
-                    const float AverageFrameTime = std::accumulate(gConfig.Simulation.FrameTimeHistory.begin(), gConfig.Simulation.FrameTimeHistory.end(), 0.0f) / gConfig.Simulation.FrameTimeHistory.size();
-                    const std::string AverageFrameTimeOverlay = "Avg: " + std::to_string(AverageFrameTime) + " ms";
-                    ImGui::PlotLines("Frame Times", gConfig.Simulation.FrameTimeHistory.data(), gConfig.Simulation.NumFramePlotValues, gConfig.Simulation.FramePlotOffset, AverageFrameTimeOverlay.c_str(), 0.0f, 100.0f, ImVec2(0, 100.0f));
-
-                    const float AvgFPS = std::accumulate(gConfig.Simulation.FramesPerSecondHistory.begin(), gConfig.Simulation.FramesPerSecondHistory.end(), 0.0f) / gConfig.Simulation.FramesPerSecondHistory.size();
-                    const std::string AverageFPSOverlay = "Avg:" + std::to_string(AvgFPS) + " ms";
-                    ImGui::PlotLines("FPS", gConfig.Simulation.FramesPerSecondHistory.data(), gConfig.Simulation.NumFramePlotValues, gConfig.Simulation.FramePlotOffset, AverageFPSOverlay.c_str(), 0.0f, 300.0f, ImVec2(0, 100.0f));
-                }
-            }
-
-            if (ImGui::CollapsingHeader("Scene"))
-            {
-                ImGui::SeparatorText("Drawables");
-                ImGui::DragInt("Num Instances", &gConfig.Scene.NumInstances, 1000.0f, 0, 1'000'000);
-
-                ImGui::SeparatorText("Camera");
-                ImGui::DragFloat3("Camera Location", glm::value_ptr(gConfig.Scene.Camera.Location), 0.1f);
-                ImGui::DragFloat3("Camera Direction", glm::value_ptr(gConfig.Scene.Camera.Direction), 0.05f);
-                ImGui::DragFloat3("Camera Orientation", glm::value_ptr(gConfig.Scene.Camera.Up), 0.05f);
-                ImGui::DragFloat("Camera Near", &gConfig.Scene.Camera.Near, 0.05f, 0.0001f);
-                ImGui::DragFloat("Camera Far", &gConfig.Scene.Camera.Far, 0.05f, 0.0001f);
-                ImGui::DragFloat("Camera Field Of View", &gConfig.Scene.Camera.FieldOfView, 0.05f, 0.1f);
-                ImGui::Checkbox("Camera Orthographic", &gConfig.Scene.Camera.bIsOrtho);
-
-                ImGui::SeparatorText("Light");
-                ImGui::DragFloat3("Light Position", glm::value_ptr(gConfig.Scene.PointLight.Position), 0.1f);
-                ImGui::DragFloat("Intensity", &gConfig.Scene.PointLight.Intensity, 0.1f);
-            }
-
-            if (ImGui::CollapsingHeader("Viewport"))
-            {
-                ImGui::SeparatorText("Window");
-                ImGui::Text("Width  : %d", gConfig.Viewport.WindowWidth);
-                ImGui::Text("Height : %d", gConfig.Viewport.WindowHeight);
-            }
-
-            if (ImGui::CollapsingHeader("Input"))
-            {
-                ImGui::Text("Mouse Position: (%d, %d)", gConfig.Input.Mouse.MousePos.x, gConfig.Input.Mouse.MousePos.y);
-                ImGui::Text("Mouse Delta   : (%d, %d)", gConfig.Input.Mouse.MouseDelta.x, gConfig.Input.Mouse.MouseDelta.y);
-            }
+            glUniformBlockBinding(*ProgramId, MatricesUBOIndex, 0);
+            glUniformBlockBinding(*ProgramId, LightUBOIndex, 1);
         }
-        ImGui::End();
+
+        {
+            const GLuint MatricesUBOIndex = glGetUniformBlockIndex(InstancedProgramId, "Matrices");
+            glUniformBlockBinding(InstancedProgramId, MatricesUBOIndex, 0);
+        }
+
+        glfwPollEvents();
 
         glfwSwapInterval(gConfig.Render.bEnableVsync);
 
@@ -1160,18 +1406,18 @@ int main()
 
         if (gConfig.Render.bDrawObject)
         {
-            glUseProgram(ProgramId);
+            glUseProgram(*ProgramId);
 
             const glm::mat4 ModelMatrix = GeoRenderData.Transform;
             const glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ModelMatrix));
 
-            GLint TimeLoc = glGetUniformLocation(ProgramId, "Time");
+            GLint TimeLoc = glGetUniformLocation(*ProgramId, "Time");
             glUniform1f(TimeLoc, static_cast<GLfloat>(gConfig.Simulation.TotalTime));
 
-            GLint NormalMatrixLoc = glGetUniformLocation(ProgramId, "NormalMatrix");
+            GLint NormalMatrixLoc = glGetUniformLocation(*ProgramId, "NormalMatrix");
             glUniformMatrix4fv(NormalMatrixLoc, 1, GL_FALSE, glm::value_ptr(NormalMatrix));
 
-            GLint ModelMatrixLoc = glGetUniformLocation(ProgramId, "ModelMatrix");
+            GLint ModelMatrixLoc = glGetUniformLocation(*ProgramId, "ModelMatrix");
             glUniformMatrix4fv(ModelMatrixLoc, 1, GL_FALSE, glm::value_ptr(ModelMatrix));
 
             glActiveTexture(GL_TEXTURE0);
@@ -1180,10 +1426,10 @@ int main()
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, CloudsTextureId);
 
-            GLint TextureSamplerLoc = glGetUniformLocation(ProgramId, "EarthTexture");
+            GLint TextureSamplerLoc = glGetUniformLocation(*ProgramId, "EarthTexture");
             glUniform1i(TextureSamplerLoc, 0);
 
-            GLint CloudsTextureSamplerLoc = glGetUniformLocation(ProgramId, "CloudsTexture");
+            GLint CloudsTextureSamplerLoc = glGetUniformLocation(*ProgramId, "CloudsTexture");
             glUniform1i(CloudsTextureSamplerLoc, 1);
 
             glPolygonMode(GL_FRONT_AND_BACK, gConfig.Render.bShowWireframe ? GL_LINE : GL_FILL);
@@ -1215,8 +1461,9 @@ int main()
             glBindVertexArray(0);
         }
 
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        glUseProgram(0);
+
+        DrawUI();
 
         glfwSwapBuffers(gConfig.Viewport.Window);
 
