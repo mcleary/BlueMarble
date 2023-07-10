@@ -3,9 +3,9 @@
 #include <Windows.h>
 
 FDirectoryWatcher::FDirectoryWatcher(const std::filesystem::path& InDirToWatch)
-    : DirToWatch{ InDirToWatch }
+    : DirToWatch{ std::filesystem::absolute(std::filesystem::current_path() / InDirToWatch) }
 {
-    DirHandle = CreateFile((std::filesystem::current_path() / InDirToWatch).string().c_str(),
+    DirHandle = CreateFile(DirToWatch.string().c_str(),
                            FILE_LIST_DIRECTORY,
                            FILE_SHARE_READ | FILE_SHARE_WRITE,
                            NULL,

@@ -986,6 +986,12 @@ public:
             {
                 ShaderMap[ProgramId] = { AbsoluteVertexShaderFile, AbsoluteFragShaderFile };
             }
+
+            glDetachShader(*ProgramId, VertShaderId);
+            glDetachShader(*ProgramId, FragShaderId);
+
+            glDeleteShader(VertShaderId);
+            glDeleteShader(FragShaderId);
         }
 
         return ProgramId;
@@ -1029,18 +1035,21 @@ public:
                     if (IsShaderValid(VertShaderId) && IsShaderValid(FragShaderId))
                     {
                         std::cout << "Linkando Programa" << std::endl;
-                        *ProgramId = glCreateProgram();
-                        glAttachShader(*ProgramId, VertShaderId);
-                        glAttachShader(*ProgramId, FragShaderId);
-                        glLinkProgram(*ProgramId);
-                        glValidateProgram(*ProgramId);
-                        IsProgramValid(*ProgramId);
+                        const GLuint NewProgramId = glCreateProgram();
+                        glAttachShader(NewProgramId, VertShaderId);
+                        glAttachShader(NewProgramId, FragShaderId);
+                        glLinkProgram(NewProgramId);
+                        glValidateProgram(NewProgramId);
+                        IsProgramValid(NewProgramId);
 
-                        glDetachShader(*ProgramId, VertShaderId);
-                        glDetachShader(*ProgramId, FragShaderId);
+                        glDetachShader(NewProgramId, VertShaderId);
+                        glDetachShader(NewProgramId, FragShaderId);
 
                         glDeleteShader(VertShaderId);
                         glDeleteShader(FragShaderId);
+
+                        glDeleteProgram(*ProgramId);
+                        *ProgramId = NewProgramId;
                     }
                 }
             }
@@ -1048,7 +1057,7 @@ public:
     }
 
 private:
-    FDirectoryWatcher DirWatcher{ "shaders" };
+    FDirectoryWatcher DirWatcher{ "../../../shaders" };
     std::map<std::shared_ptr<GLuint>, std::pair<std::filesystem::path, std::filesystem::path>> ShaderMap;
 };
 
@@ -1259,9 +1268,8 @@ int main()
     // GLuint ProgramId = LoadShaders("shaders/triangle.vert", "shaders/triangle.frag");
 
     std::shared_ptr<GLuint> ProgramId = ShaderManager.AddShader("shaders/triangle.vert", "shaders/triangle.frag");
-
-    GLuint InstancedProgramId = LoadShaders("shaders/instanced.vert", "shaders/instanced.frag");
-    GLuint AxisProgramId = LoadShaders("shaders/lines.vert", "shaders/lines.frag");
+    std::shared_ptr<GLuint> InstancedProgramId = ShaderManager.AddShader("shaders/instanced.vert", "shaders/instanced.frag");
+    std::shared_ptr<GLuint> AxisProgramId = ShaderManager.AddShader("shaders/lines.vert", "shaders/lines.frag");
 
     FRenderData AxisRenderData = GetAxisRenderData();
     FRenderData GeoRenderData = GetRenderData();
@@ -1331,8 +1339,8 @@ int main()
         }
 
         {
-            const GLuint MatricesUBOIndex = glGetUniformBlockIndex(InstancedProgramId, "Matrices");
-            glUniformBlockBinding(InstancedProgramId, MatricesUBOIndex, 0);
+            const GLuint MatricesUBOIndex = glGetUniformBlockIndex(*InstancedProgramId, "Matrices");
+            glUniformBlockBinding(*InstancedProgramId, MatricesUBOIndex, 0);
         }
 
         glfwPollEvents();
@@ -1392,11 +1400,11 @@ int main()
 
         if (gConfig.Render.bDrawAxis)
         {
-            glUseProgram(AxisProgramId);
+            glUseProgram(*AxisProgramId);
 
             const glm::mat4 ModelViewProjectionMatrix = Matrices.Projection * Matrices.View;
 
-            GLint ModelViewProjectionLoc = glGetUniformLocation(AxisProgramId, "ModelViewProjection");
+            GLint ModelViewProjectionLoc = glGetUniformLocation(*AxisProgramId, "ModelViewProjection");
             glUniformMatrix4fv(ModelViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ModelViewProjectionMatrix));
 
             glBindVertexArray(AxisRenderData.VAO);
@@ -1441,18 +1449,18 @@ int main()
         if (gConfig.Render.bDrawInstances)
         {
             // Render Instanced Data
-            glUseProgram(InstancedProgramId);
+            glUseProgram(*InstancedProgramId);
 
-            GLuint TimeLoc = glGetUniformLocation(InstancedProgramId, "Time");
+            GLuint TimeLoc = glGetUniformLocation(*InstancedProgramId, "Time");
             glUniform1f(TimeLoc, static_cast<GLfloat>(gConfig.Simulation.TotalTime));
 
-            GLint NumInstancesLoc = glGetUniformLocation(InstancedProgramId, "NumInstances");
+            GLint NumInstancesLoc = glGetUniformLocation(*InstancedProgramId, "NumInstances");
             glUniform1i(NumInstancesLoc, InstRenderData.NumInstances);
 
-            GLint TextureSamplerLoc = glGetUniformLocation(InstancedProgramId, "EarthTexture");
+            GLint TextureSamplerLoc = glGetUniformLocation(*InstancedProgramId, "EarthTexture");
             glUniform1i(TextureSamplerLoc, 0);
 
-            GLint CloudsTextureSamplerLoc = glGetUniformLocation(InstancedProgramId, "CloudsTexture");
+            GLint CloudsTextureSamplerLoc = glGetUniformLocation(*InstancedProgramId, "CloudsTexture");
             glUniform1i(CloudsTextureSamplerLoc, 1);
 
             glPolygonMode(GL_FRONT_AND_BACK, gConfig.Render.bShowWireframe ? GL_LINE : GL_FILL);
