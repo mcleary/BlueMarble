@@ -949,8 +949,8 @@ public:
 
     std::shared_ptr<GLuint> AddShader(const std::string& InVertexShaderFile, const std::string& InFragmentShaderFile)
     {
-        const std::filesystem::path AbsoluteVertexShaderFile = std::filesystem::current_path() / InVertexShaderFile;
-        const std::filesystem::path AbsoluteFragShaderFile = std::filesystem::current_path() / InFragmentShaderFile;
+        const std::filesystem::path AbsoluteVertexShaderFile = std::filesystem::absolute(std::filesystem::path{ ShadersDir } / InVertexShaderFile);
+        const std::filesystem::path AbsoluteFragShaderFile = std::filesystem::absolute(std::filesystem::path{ ShadersDir } / InFragmentShaderFile);
 
         std::shared_ptr<GLuint> ProgramId = std::make_shared<GLuint>(-1);
 
@@ -1057,7 +1057,8 @@ public:
     }
 
 private:
-    FDirectoryWatcher DirWatcher{ "../../../shaders" };
+    static constexpr std::string_view ShadersDir = "../../../shaders";
+    FDirectoryWatcher DirWatcher{ ShadersDir };
     std::map<std::shared_ptr<GLuint>, std::pair<std::filesystem::path, std::filesystem::path>> ShaderMap;
 };
 
@@ -1264,12 +1265,9 @@ int main()
 
     FShaderManager ShaderManager;
 
-    // Compilar o vertex e o fragment shader
-    // GLuint ProgramId = LoadShaders("shaders/triangle.vert", "shaders/triangle.frag");
-
-    std::shared_ptr<GLuint> ProgramId = ShaderManager.AddShader("shaders/triangle.vert", "shaders/triangle.frag");
-    std::shared_ptr<GLuint> InstancedProgramId = ShaderManager.AddShader("shaders/instanced.vert", "shaders/instanced.frag");
-    std::shared_ptr<GLuint> AxisProgramId = ShaderManager.AddShader("shaders/lines.vert", "shaders/lines.frag");
+    std::shared_ptr<GLuint> ProgramId = ShaderManager.AddShader("triangle.vert", "triangle.frag");
+    std::shared_ptr<GLuint> InstancedProgramId = ShaderManager.AddShader("instanced.vert", "instanced.frag");
+    std::shared_ptr<GLuint> AxisProgramId = ShaderManager.AddShader("lines.vert", "lines.frag");
 
     FRenderData AxisRenderData = GetAxisRenderData();
     FRenderData GeoRenderData = GetRenderData();

@@ -2,8 +2,11 @@
 
 #include <Windows.h>
 
+#include <iostream>
+#include <array>
+
 FDirectoryWatcher::FDirectoryWatcher(const std::filesystem::path& InDirToWatch)
-    : DirToWatch{ std::filesystem::absolute(std::filesystem::current_path() / InDirToWatch) }
+    : DirToWatch{ std::filesystem::absolute(InDirToWatch) }
 {
     DirHandle = CreateFile(DirToWatch.string().c_str(),
                            FILE_LIST_DIRECTORY,
@@ -14,37 +17,71 @@ FDirectoryWatcher::FDirectoryWatcher(const std::filesystem::path& InDirToWatch)
 
     WorkerThread = std::thread([&]
     {
+        std::vector<UCHAR> Buffer(64 * 1024, 0);
+
         DWORD BytesReturned;
-        std::uint8_t Buffer[1024];
         while (bShouldWatch)
         {
             bIsWaiting = true;
-            if (ReadDirectoryChangesW(DirHandle, Buffer, sizeof(Buffer), FALSE, FILE_NOTIFY_CHANGE_LAST_WRITE, &BytesReturned, NULL, NULL) == TRUE)
+            constexpr DWORD NotifyFilter = FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE;
+            if (ReadDirectoryChangesW(DirHandle, Buffer.data(), Buffer.size() * sizeof(UCHAR), FALSE, NotifyFilter, &BytesReturned, NULL, NULL) == TRUE)
             {
-                std::uint32_t Offset = 0;
+                DWORD Offset = 0;
+                FILE_NOTIFY_INFORMATION* Info;
                 do
                 {
-                    FILE_NOTIFY_INFORMATION* Info = (FILE_NOTIFY_INFORMATION*) &Buffer[Offset];
+                    Info = (FILE_NOTIFY_INFORMATION*) &Buffer[Offset];
+
+                    #if 0
+                    switch (Info->Action)
+                    {
+                        case FILE_ACTION_ADDED:
+                            std::cout << "Add: ";
+                            break;
+
+                        case FILE_ACTION_MODIFIED:
+                            std::cout << "Modified: ";
+                            break;
+
+                        case FILE_ACTION_REMOVED:
+                            std::cout << "Removed: ";
+                            break;
+
+                        case FILE_ACTION_RENAMED_NEW_NAME:
+                            std::cout << "Renamed New Name: ";
+                            break;
+
+                        case FILE_ACTION_RENAMED_OLD_NAME:
+                            std::cout << "Renamed Old Name: ";
+                            break;
+                    }
+
+                    std::wstring FileNameW{ Info->FileName, Info->FileNameLength / sizeof(WCHAR) };
+                    std::filesystem::path FilePath{ FileNameW };
+
+                    std::cout << FilePath << std::endl;
+                    #endif
 
                     switch (Info->Action)
                     {
                         case FILE_ACTION_MODIFIED:
+                        case FILE_ACTION_RENAMED_NEW_NAME:
                         {
-                            std::wstring FileNameW{ Info->FileName, Info->FileNameLength / sizeof(WCHAR) };
-                            std::filesystem::path FilePath{ FileNameW };
+                            const std::wstring FileNameW{ Info->FileName, Info->FileNameLength / sizeof(WCHAR) };
+                            const std::filesystem::path FilePath{ FileNameW };
 
                             {
                                 std::lock_guard Lock{ FilesChangedMutex };
-                                FilesChanged.insert((std::filesystem::current_path() / std::filesystem::path{ DirToWatch } / FilePath));
+                                FilesChanged.insert(DirToWatch / FilePath);
                             }
 
                             break;
                         }
                     }
 
-                    Offset = Info->NextEntryOffset;
+                    Offset += Info->NextEntryOffset;
                 }
-                while (Offset != 0);
+                while (Info->NextEntryOffset != 0);
             }
             bIsWaiting = false;
         }
