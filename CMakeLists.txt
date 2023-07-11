@@ -12,8 +12,12 @@ find_package(glm REQUIRED)
 find_package(imgui CONFIG REQUIRED)
 
 add_executable(BlueMarble main.cpp
+                          Camera.h
                           Camera.cpp
-                          DirectoryWatcher.cpp)
+                          DirectoryWatcher.h
+                          DirectoryWatcher.cpp
+                          ShaderManager.h
+                          ShaderManager.cpp)
 
 target_include_directories(BlueMarble PRIVATE ${Stb_INCLUDE_DIR})
 target_link_libraries(BlueMarble PRIVATE glad::glad

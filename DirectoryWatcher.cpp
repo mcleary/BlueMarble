@@ -24,7 +24,7 @@ FDirectoryWatcher::FDirectoryWatcher(const std::filesystem::path& InDirToWatch)
         {
             bIsWaiting = true;
             constexpr DWORD NotifyFilter = FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE;
-            if (ReadDirectoryChangesW(DirHandle, Buffer.data(), Buffer.size() * sizeof(UCHAR), FALSE, NotifyFilter, &BytesReturned, NULL, NULL) == TRUE)
+            if (ReadDirectoryChangesW(DirHandle, Buffer.data(), static_cast<DWORD>(Buffer.size() * sizeof(UCHAR)), FALSE, NotifyFilter, &BytesReturned, NULL, NULL) == TRUE)
             {
                 DWORD Offset = 0;
                 FILE_NOTIFY_INFORMATION* Info;
