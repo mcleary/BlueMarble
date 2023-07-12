@@ -90,8 +90,9 @@ struct FSimulationConfig
 {
     bool bPause = true;
     bool bReverse = false;
-    double TotalTime = 0.0f;
-    double FramesPerSecond = 0.0f;
+    double TotalTime = 0.0;
+    double ApplicationTime = 0.0;
+    double FramesPerSecond = 0.0;
     double FrameTime = 0.0f;
     std::uint32_t FrameCount = 0;
     std::uint32_t TotalFrames = 0;
@@ -921,11 +922,12 @@ void DrawUI()
             ImGui::Checkbox("Pause", &gConfig.Simulation.bPause);
             ImGui::Checkbox("Reverse", &gConfig.Simulation.bReverse);
 
-            ImGui::Text("Time (s)         : %f", gConfig.Simulation.TotalTime);
-            ImGui::Text("Frame Count      : %d", gConfig.Simulation.FrameCount);
-            ImGui::Text("Frmae Time (ms)  : %f", gConfig.Simulation.FrameTime);
-            ImGui::Text("FPS              : %f", gConfig.Simulation.FramesPerSecond);
-            ImGui::Text("Frames:          : %d", gConfig.Simulation.TotalFrames);
+            ImGui::Text("Time (s)             : %f", gConfig.Simulation.TotalTime);
+            ImGui::Text("Application Time (s) : %f", gConfig.Simulation.ApplicationTime);
+            ImGui::Text("Frame Count          : %d", gConfig.Simulation.FrameCount);
+            ImGui::Text("Frame Time (ms)      : %f", gConfig.Simulation.FrameTime);
+            ImGui::Text("FPS                  : %f", gConfig.Simulation.FramesPerSecond);
+            ImGui::Text("Frames:              : %d", gConfig.Simulation.TotalFrames);
 
             if (ImGui::CollapsingHeader("Plots"))
             {
@@ -1153,6 +1155,7 @@ int main()
         }
 
         const double CurrentTime = glfwGetTime();
+        gConfig.Simulation.ApplicationTime = CurrentTime;
         gConfig.Simulation.FrameTime = CurrentTime - PreviousTime;
 
         gConfig.Simulation.FrameTimeHistory.resize(gConfig.Simulation.NumFramePlotValues);
@@ -1182,6 +1185,7 @@ int main()
         }
 
         gConfig.Simulation.FrameCount++;
+        gConfig.Simulation.TotalFrames++;
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
