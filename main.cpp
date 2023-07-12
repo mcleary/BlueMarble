@@ -80,10 +80,17 @@ struct FInstancedRenderData : public FRenderData
     GLuint NumInstances;
 };
 
-struct FUBOMatrices
+struct FPerFrameData
 {
-    glm::mat4 View;
-    glm::mat4 Projection;
+    glm::mat4 ViewMatrix;
+    glm::mat4 ProjectionMatrix;
+    float Time;
+};
+
+struct FPerModelData
+{
+    glm::mat4 ModelMatrix;
+    glm::mat4 NormalMatrix;
 };
 
 struct FSimulationConfig
@@ -1099,10 +1106,15 @@ int main()
     const double LoadTexturesEndTime = glfwGetTime();
     std::cout << "Texturas Carregadas em " << (LoadTexturesEndTime - LoadTexturesStartTime) << " segundos" << std::endl;
 
-    GLuint MatricesUBO, LightUBO;
-    glGenBuffers(1, &MatricesUBO);
-    glBindBuffer(GL_UNIFORM_BUFFER, MatricesUBO);
-    glBufferData(GL_UNIFORM_BUFFER, sizeof(FUBOMatrices), nullptr, GL_STATIC_DRAW);
+    GLuint FrameUBO, ModelUBO, LightUBO;
+    glGenBuffers(1, &FrameUBO);
+    glBindBuffer(GL_UNIFORM_BUFFER, FrameUBO);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(FPerFrameData), nullptr, GL_STATIC_DRAW);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    glGenBuffers(1, &ModelUBO);
+    glBindBuffer(GL_UNIFORM_BUFFER, ModelUBO);
+    glBufferData(GL_UNIFORM_BUFFER, sizeof(FPerModelData), nullptr, GL_STATIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
     glGenBuffers(1, &LightUBO);
@@ -1110,8 +1122,9 @@ int main()
     glBufferData(GL_UNIFORM_BUFFER, sizeof(FLight), nullptr, GL_STATIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-    glBindBufferRange(GL_UNIFORM_BUFFER, 0, MatricesUBO, 0, sizeof(FUBOMatrices));
-    glBindBufferRange(GL_UNIFORM_BUFFER, 1, LightUBO, 0, sizeof(FLight));
+    glBindBufferRange(GL_UNIFORM_BUFFER, 0, FrameUBO, 0, sizeof(FPerFrameData));
+    glBindBufferRange(GL_UNIFORM_BUFFER, 1, ModelUBO, 0, sizeof(FPerModelData));
+    glBindBufferRange(GL_UNIFORM_BUFFER, 2, LightUBO, 0, sizeof(FLight));
 
     // Configura a cor de fundo
     glClearColor(0.1f, 0.1f, 0.1f, 1.0);
@@ -1129,16 +1142,29 @@ int main()
         gConfig.Render.ShaderManager.UpdateShaders();
 
         {
-            const GLuint MatricesUBOIndex = glGetUniformBlockIndex(*ProgramId, "Matrices");
+            const GLuint FrameUBOIndex = glGetUniformBlockIndex(*ProgramId, "FrameUBO");
+            const GLuint ModelUBOIndex = glGetUniformBlockIndex(*ProgramId, "ModelUBO");
             const GLuint LightUBOIndex = glGetUniformBlockIndex(*ProgramId, "LightUBO");
 
-            glUniformBlockBinding(*ProgramId, MatricesUBOIndex, 0);
-            glUniformBlockBinding(*ProgramId, LightUBOIndex, 1);
+            glUniformBlockBinding(*ProgramId, FrameUBOIndex, 0);
+            glUniformBlockBinding(*ProgramId, ModelUBOIndex, 1);
+            glUniformBlockBinding(*ProgramId, LightUBOIndex, 2);
         }
 
         {
-            const GLuint MatricesUBOIndex = glGetUniformBlockIndex(*InstancedProgramId, "Matrices");
-            glUniformBlockBinding(*InstancedProgramId, MatricesUBOIndex, 0);
+            const GLuint FrameUBOIndex = glGetUniformBlockIndex(*InstancedProgramId, "FrameUBO");
+            const GLuint ModelUBOIndex = glGetUniformBlockIndex(*InstancedProgramId, "ModelUBO");
+
+            glUniformBlockBinding(*InstancedProgramId, FrameUBOIndex, 0);
+            glUniformBlockBinding(*InstancedProgramId, ModelUBOIndex, 1);
+        }
+
+        {
+            const GLuint FrameUBOIndex = glGetUniformBlockIndex(*AxisProgramId, "FrameUBO");
+            const GLuint ModelUBOIndex = glGetUniformBlockIndex(*AxisProgramId, "ModelUBO");
+
+            glUniformBlockBinding(*AxisProgramId, FrameUBOIndex, 0);
+            glUniformBlockBinding(*AxisProgramId, ModelUBOIndex, 1);
         }
 
         glfwPollEvents();
@@ -1189,11 +1215,12 @@ int main()
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        FUBOMatrices Matrices = { .View = gConfig.Scene.Camera.GetView(),
-            .Projection = gConfig.Scene.Camera.GetProjection() };
+        const FPerFrameData PerFrameUBO = { .ViewMatrix = gConfig.Scene.Camera.GetView(),
+                                        .ProjectionMatrix = gConfig.Scene.Camera.GetProjection(),
+                                        .Time = static_cast<float>(gConfig.Simulation.TotalTime) };
 
-        glBindBuffer(GL_UNIFORM_BUFFER, MatricesUBO);
-        glBufferData(GL_UNIFORM_BUFFER, sizeof(FUBOMatrices), &Matrices, GL_STATIC_DRAW);
+        glBindBuffer(GL_UNIFORM_BUFFER, FrameUBO);
+        glBufferData(GL_UNIFORM_BUFFER, sizeof(FPerFrameData), &PerFrameUBO, GL_STATIC_DRAW);
 
         glBindBuffer(GL_UNIFORM_BUFFER, LightUBO);
         glBufferData(GL_UNIFORM_BUFFER, sizeof(FLight), &gConfig.Scene.PointLight, GL_STATIC_DRAW);
@@ -1202,10 +1229,12 @@ int main()
         {
             glUseProgram(*AxisProgramId);
 
-            const glm::mat4 ModelViewProjectionMatrix = Matrices.Projection * Matrices.View;
+            const glm::mat4 ModelMatrix = glm::identity<glm::mat4>();
 
-            GLint ModelViewProjectionLoc = glGetUniformLocation(*AxisProgramId, "ModelViewProjection");
-            glUniformMatrix4fv(ModelViewProjectionLoc, 1, GL_FALSE, glm::value_ptr(ModelViewProjectionMatrix));
+            const FPerModelData PerModelUBO = { .ModelMatrix = ModelMatrix, .NormalMatrix = ModelMatrix };
+
+            glBindBuffer(GL_UNIFORM_BUFFER, ModelUBO);
+            glBufferData(GL_UNIFORM_BUFFER, sizeof(FPerModelData), &PerModelUBO, GL_STATIC_DRAW);
 
             glBindVertexArray(AxisRenderData.VAO);
             glDrawArrays(GL_LINES, 0, AxisRenderData.NumElements);
@@ -1219,14 +1248,10 @@ int main()
             const glm::mat4 ModelMatrix = GeoRenderData.Transform;
             const glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ModelMatrix));
 
-            GLint TimeLoc = glGetUniformLocation(*ProgramId, "Time");
-            glUniform1f(TimeLoc, static_cast<GLfloat>(gConfig.Simulation.TotalTime));
+            const FPerModelData PerModelUBO = { .ModelMatrix = ModelMatrix, .NormalMatrix = NormalMatrix };
 
-            GLint NormalMatrixLoc = glGetUniformLocation(*ProgramId, "NormalMatrix");
-            glUniformMatrix4fv(NormalMatrixLoc, 1, GL_FALSE, glm::value_ptr(NormalMatrix));
-
-            GLint ModelMatrixLoc = glGetUniformLocation(*ProgramId, "ModelMatrix");
-            glUniformMatrix4fv(ModelMatrixLoc, 1, GL_FALSE, glm::value_ptr(ModelMatrix));
+            glBindBuffer(GL_UNIFORM_BUFFER, ModelUBO);
+            glBufferData(GL_UNIFORM_BUFFER, sizeof(FPerModelData), &PerModelUBO, GL_STATIC_DRAW);
 
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, EarthTextureId);
@@ -1250,9 +1275,6 @@ int main()
         {
             // Render Instanced Data
             glUseProgram(*InstancedProgramId);
-
-            GLuint TimeLoc = glGetUniformLocation(*InstancedProgramId, "Time");
-            glUniform1f(TimeLoc, static_cast<GLfloat>(gConfig.Simulation.TotalTime));
 
             GLint NumInstancesLoc = glGetUniformLocation(*InstancedProgramId, "NumInstances");
             glUniform1i(NumInstancesLoc, InstRenderData.NumInstances);

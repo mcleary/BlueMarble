@@ -18,7 +18,13 @@ layout (std140) uniform LightUBO
     Light PointLight;
 };
 
-uniform float Time;
+layout (std140) uniform FrameUBO
+{
+    mat4 View;
+    mat4 Projection;
+
+    float Time;
+};
 
 uniform sampler2D EarthTexture;
 uniform sampler2D CloudsTexture;

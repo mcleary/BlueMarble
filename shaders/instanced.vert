@@ -5,13 +5,19 @@ layout(location = 1) in vec3 InNormal;
 layout(location = 2) in vec2 InUV;
 layout(location = 3) in mat4 InModelMatrix;
 
-uniform float Time;
 uniform int NumInstances;
 
-layout (std140) uniform Matrices
+layout (std140) uniform FrameUBO
 {
     mat4 View;
     mat4 Projection;
+    float Time;
+};
+
+layout (std140) uniform ModelUBO
+{
+    mat4 Model;
+    mat4 Normal;
 };
 
 out VertexData
