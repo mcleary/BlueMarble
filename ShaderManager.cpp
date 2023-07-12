@@ -1,6 +1,7 @@
 
 #include "ShaderManager.h"
 
+#include <array>
 #include <fstream>
 #include <iostream>
 
@@ -127,6 +128,17 @@ bool FShaderManager::CompileAndLink(GLuint InProgramId, const std::filesystem::p
         glDeleteShader(VertShaderId);
         glDeleteShader(FragShaderId);
 
+        constexpr std::array<std::string_view, 3> UBONames = { "FrameUBO", "ModelUBO", "LightUBO" };
+
+        GLint BindingIndex = 0;
+        for (const std::string_view& UBOName : UBONames)
+        {
+            const GLint UBOIndex = glGetUniformBlockIndex(InProgramId, UBOName.data());
+            if (UBOIndex != -1)
+            {
+                glUniformBlockBinding(InProgramId, UBOIndex, static_cast<GLint>(BindingIndex++));
+            }
+        }
         return IsProgramValid(InProgramId);
     }
     else

@@ -1141,32 +1141,6 @@ int main()
     {
         gConfig.Render.ShaderManager.UpdateShaders();
 
-        {
-            const GLuint FrameUBOIndex = glGetUniformBlockIndex(*ProgramId, "FrameUBO");
-            const GLuint ModelUBOIndex = glGetUniformBlockIndex(*ProgramId, "ModelUBO");
-            const GLuint LightUBOIndex = glGetUniformBlockIndex(*ProgramId, "LightUBO");
-
-            glUniformBlockBinding(*ProgramId, FrameUBOIndex, 0);
-            glUniformBlockBinding(*ProgramId, ModelUBOIndex, 1);
-            glUniformBlockBinding(*ProgramId, LightUBOIndex, 2);
-        }
-
-        {
-            const GLuint FrameUBOIndex = glGetUniformBlockIndex(*InstancedProgramId, "FrameUBO");
-            const GLuint ModelUBOIndex = glGetUniformBlockIndex(*InstancedProgramId, "ModelUBO");
-
-            glUniformBlockBinding(*InstancedProgramId, FrameUBOIndex, 0);
-            glUniformBlockBinding(*InstancedProgramId, ModelUBOIndex, 1);
-        }
-
-        {
-            const GLuint FrameUBOIndex = glGetUniformBlockIndex(*AxisProgramId, "FrameUBO");
-            const GLuint ModelUBOIndex = glGetUniformBlockIndex(*AxisProgramId, "ModelUBO");
-
-            glUniformBlockBinding(*AxisProgramId, FrameUBOIndex, 0);
-            glUniformBlockBinding(*AxisProgramId, ModelUBOIndex, 1);
-        }
-
         glfwPollEvents();
 
         glfwSwapInterval(gConfig.Render.bEnableVsync);
