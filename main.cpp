@@ -110,6 +110,8 @@ struct FRenderConfig
     bool bDrawObject = true;
     bool bDrawInstances = true;
     bool bEnableVsync = true;
+
+    FShaderManager ShaderManager;
 };
 
 struct FViewportConfig
@@ -334,51 +336,6 @@ std::vector<glm::mat4> GenerateInstances(GLuint InNumInstances)
 
     return ModelMatrices;
 }
-
-
-
-void CheckShader(GLuint ShaderId)
-{
-    // Verificar se o shader foi compilado
-    GLint Result = GL_TRUE;
-    glGetShaderiv(ShaderId, GL_COMPILE_STATUS, &Result);
-
-    if (Result == GL_FALSE)
-    {
-        // Erro ao compilar o shader, imprimir o log para saber o que está errado
-        GLint InfoLogLength = 0;
-        glGetShaderiv(ShaderId, GL_INFO_LOG_LENGTH, &InfoLogLength);
-
-        if (InfoLogLength > 0)
-        {
-            GLint ShaderType = 0;
-            glGetShaderiv(ShaderId, GL_SHADER_TYPE, &ShaderType);
-
-            std::string ShaderInfoLog(InfoLogLength, '\0');
-            glGetShaderInfoLog(ShaderId, InfoLogLength, nullptr, &ShaderInfoLog[0]);
-
-            std::string_view ShaderTypeStr;
-            switch (ShaderType)
-            {
-                case GL_VERTEX_SHADER:
-                    ShaderTypeStr = "Vertex";
-                    break;
-
-                case GL_FRAGMENT_SHADER:
-                    ShaderTypeStr = "Fragment";
-                    break;
-
-                default:
-                    assert(false);
-            }
-
-            std::cout << "Erro no " << ShaderTypeStr << " Shader: " << std::endl;
-            std::cout << ShaderInfoLog << std::endl;
-        }
-    }
-}
-
-
 
 GLuint LoadTexture(const char* TextureFile)
 {
@@ -864,7 +821,7 @@ void DrawUI()
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
 
-    ImGui::ShowDemoWindow();
+    // ImGui::ShowDemoWindow();
 
     ImGui::Begin("BlueMarble Config");
     {
@@ -937,6 +894,22 @@ void DrawUI()
         }
     }
     ImGui::End();
+
+    const std::map<std::filesystem::path, std::string>& ShaderFailureLogs = gConfig.Render.ShaderManager.GetFailureLogs();
+    if (!ShaderFailureLogs.empty())
+    {
+        ImGui::Begin("Shader Compilation Logs");
+        {
+            std::stringstream LogStream;
+            for (auto [ShaderFilePath, FailureLog] : ShaderFailureLogs)
+            {
+                LogStream << ShaderFilePath << "\n\n";
+                LogStream << FailureLog << "\n\n";
+            }
+            ImGui::TextWrapped(LogStream.str().c_str());
+        }
+        ImGui::End();
+    }
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -1012,11 +985,9 @@ int main()
     std::cout << "glfw Version    : " << glfwGetVersionString() << std::endl;
     std::cout << "ImGui Version   : " << IMGUI_VERSION << std::endl;
 
-    FShaderManager ShaderManager;
-
-    std::shared_ptr<GLuint> ProgramId = ShaderManager.AddShader("triangle.vert", "triangle.frag");
-    std::shared_ptr<GLuint> InstancedProgramId = ShaderManager.AddShader("instanced.vert", "instanced.frag");
-    std::shared_ptr<GLuint> AxisProgramId = ShaderManager.AddShader("lines.vert", "lines.frag");
+    std::shared_ptr<GLuint> ProgramId = gConfig.Render.ShaderManager.AddShader("triangle.vert", "triangle.frag");
+    std::shared_ptr<GLuint> InstancedProgramId = gConfig.Render.ShaderManager.AddShader("instanced.vert", "instanced.frag");
+    std::shared_ptr<GLuint> AxisProgramId = gConfig.Render.ShaderManager.AddShader("lines.vert", "lines.frag");
 
     FRenderData AxisRenderData = GetAxisRenderData();
     FRenderData GeoRenderData = GetRenderData();
@@ -1075,7 +1046,7 @@ int main()
 
     while (!glfwWindowShouldClose(gConfig.Viewport.Window))
     {
-        ShaderManager.UpdateShaders();
+        gConfig.Render.ShaderManager.UpdateShaders();
 
         {
             const GLuint MatricesUBOIndex = glGetUniformBlockIndex(*ProgramId, "Matrices");

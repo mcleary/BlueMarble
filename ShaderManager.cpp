@@ -14,7 +14,7 @@ static std::string ReadFile(const std::filesystem::path & InFilePath)
     return FileContents;
 }
 
-bool FShaderManager::IsShaderValid(GLuint InShaderId)
+bool FShaderManager::IsShaderValid(GLuint InShaderId, std::string& OutInfoLog)
 {
     // Verificar se o shader foi compilado
     GLint Result = GL_TRUE;
@@ -52,6 +52,7 @@ bool FShaderManager::IsShaderValid(GLuint InShaderId)
 
             std::cout << "Erro no " << ShaderTypeStr << " Shader: " << std::endl;
             std::cout << ShaderInfoLog << std::endl;
+            OutInfoLog = ShaderInfoLog;
 
             return false;
         }
@@ -112,7 +113,8 @@ bool FShaderManager::CompileAndLink(GLuint InProgramId, const std::filesystem::p
     glShaderSource(FragShaderId, 1, &FragmentShaderSourcePtr, nullptr);
     glCompileShader(FragShaderId);
 
-    if (IsShaderValid(VertShaderId) && IsShaderValid(FragShaderId))
+    std::string VertexShaderInfoLog, FragmentShaderInfoLog;
+    if (IsShaderValid(VertShaderId, VertexShaderInfoLog) && IsShaderValid(FragShaderId, FragmentShaderInfoLog))
     {
         std::cout << "Linkando Programa" << std::endl;
         glAttachShader(InProgramId, VertShaderId);
@@ -126,6 +128,18 @@ bool FShaderManager::CompileAndLink(GLuint InProgramId, const std::filesystem::p
         glDeleteShader(FragShaderId);
 
         return IsProgramValid(InProgramId);
+    }
+    else
+    {
+        if (!VertexShaderInfoLog.empty())
+        {
+            FailureLogs[InVertexShaderFile] = VertexShaderInfoLog;
+        }
+
+        if (!FragmentShaderSource.empty())
+        {
+            FailureLogs[InFragmentShaderFile] = FragmentShaderInfoLog;
+        }
     }
 
     return false;
@@ -151,6 +165,8 @@ void FShaderManager::UpdateShaders()
     std::set<std::filesystem::path> ChangedFiles = DirWatcher.GetChangedFiles();
     if (!ChangedFiles.empty())
     {
+        FailureLogs.clear();
+
         for (const std::filesystem::path& ShaderFile : ChangedFiles)
         {
             auto ShaderIt = std::find_if(ShaderMap.begin(), ShaderMap.end(), [ShaderFile](const std::pair<std::shared_ptr<GLuint>, std::pair<std::filesystem::path, std::filesystem::path>>& ShaderMapPair)
