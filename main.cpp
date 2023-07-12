@@ -543,15 +543,15 @@ void MouseMotionCallback(GLFWwindow* Window, double X, double Y)
         return;
     }
 
-    glm::ivec2 CurrentPos = { static_cast<std::int32_t>(X), static_cast<std::int32_t>(Y) };
+    const glm::ivec2 CurrentPos = { static_cast<std::int32_t>(X), static_cast<std::int32_t>(Y) };
 
     if (gConfig.Input.Mouse.PreviousMousePos == glm::ivec2{ -1, -1 })
     {
-        gConfig.Input.Mouse.PreviousMousePos = { static_cast<std::int32_t>(X), static_cast<std::int32_t>(Y) };
+        gConfig.Input.Mouse.PreviousMousePos = CurrentPos;
     }
     else
     {
-        gConfig.Input.Mouse.MousePos = { static_cast<std::int32_t>(X), static_cast<std::int32_t>(Y) };
+        gConfig.Input.Mouse.MousePos = CurrentPos;
         gConfig.Input.Mouse.MouseDelta = gConfig.Input.Mouse.MousePos - gConfig.Input.Mouse.PreviousMousePos;
         gConfig.Input.Mouse.PreviousMousePos = gConfig.Input.Mouse.MousePos;
     }
@@ -560,8 +560,8 @@ void MouseMotionCallback(GLFWwindow* Window, double X, double Y)
 
     if (gConfig.Scene.SceneType == ESceneType::Ortho)
     {
-        gConfig.Scene.PointLight.Position.x = static_cast<float>(X) / gConfig.Viewport.WindowWidth;
-        gConfig.Scene.PointLight.Position.y = static_cast<float>(gConfig.Viewport.WindowHeight - Y) / gConfig.Viewport.WindowHeight;
+        gConfig.Scene.PointLight.Position.x = static_cast<float>(CurrentPos.x) / gConfig.Viewport.WindowWidth;
+        gConfig.Scene.PointLight.Position.y = static_cast<float>(gConfig.Viewport.WindowHeight - CurrentPos.y) / gConfig.Viewport.WindowHeight;
     }
 }
 
