@@ -32,6 +32,7 @@ enum class ESceneType
 {
     BlueMarble,
     Cylinder,
+    Cube,
     Ortho
 };
 
@@ -300,6 +301,76 @@ FGeometry GenerateQuad()
     };
 
     return QuadGeometry;
+}
+
+FGeometry GenerateCube()
+{
+    FGeometry CubeGeometry;
+
+    constexpr glm::vec3 XNormal = { 1.0f, 0.0f, 0.0f };
+    constexpr glm::vec3 YNormal = { 0.0f, 1.0f, 0.0f };
+    constexpr glm::vec3 ZNormal = { 0.0f, 0.0f, 1.0f };
+
+    CubeGeometry.Vertices =
+    {
+        // +Z
+        FVertex{ .Position = { -0.5f, -0.5f, 0.5f }, .Normal = ZNormal, . UV = { 0.0f, 1.0f } },
+        FVertex{ .Position = {  0.5f, -0.5f, 0.5f }, .Normal = ZNormal, . UV = { 1.0f, 1.0f } },
+        FVertex{ .Position = {  0.5f,  0.5f, 0.5f }, .Normal = ZNormal, . UV = { 1.0f, 0.0f } },
+        FVertex{ .Position = { -0.5f,  0.5f, 0.5f }, .Normal = ZNormal, . UV = { 0.0f, 0.0f } },
+
+        // -Z
+        FVertex{ .Position = { -0.5f, -0.5f, -0.5f }, .Normal = -ZNormal, . UV = { 0.0f, 1.0f } },
+        FVertex{ .Position = {  0.5f, -0.5f, -0.5f }, .Normal = -ZNormal, . UV = { 1.0f, 1.0f } },
+        FVertex{ .Position = {  0.5f,  0.5f, -0.5f }, .Normal = -ZNormal, . UV = { 1.0f, 0.0f } },
+        FVertex{ .Position = { -0.5f,  0.5f, -0.5f }, .Normal = -ZNormal, . UV = { 0.0f, 0.0f } },
+
+        // +X
+        FVertex{ .Position = { 0.5f, -0.5f, -0.5f }, .Normal = XNormal, . UV = { 0.0f, 1.0f } },
+        FVertex{ .Position = { 0.5f,  0.5f, -0.5f }, .Normal = XNormal, . UV = { 1.0f, 1.0f } },
+        FVertex{ .Position = { 0.5f,  0.5f,  0.5f }, .Normal = XNormal, . UV = { 1.0f, 0.0f } },
+        FVertex{ .Position = { 0.5f, -0.5f,  0.5f }, .Normal = XNormal, . UV = { 0.0f, 0.0f } },
+
+        // -X
+        FVertex{ .Position = { -0.5f, -0.5f, -0.5f }, .Normal = -XNormal, . UV = { 0.0f, 1.0f } },
+        FVertex{ .Position = { -0.5f,  0.5f, -0.5f }, .Normal = -XNormal, . UV = { 1.0f, 1.0f } },
+        FVertex{ .Position = { -0.5f,  0.5f,  0.5f }, .Normal = -XNormal, . UV = { 1.0f, 0.0f } },
+        FVertex{ .Position = { -0.5f, -0.5f,  0.5f }, .Normal = -XNormal, . UV = { 0.0f, 0.0f } },
+
+        // +Y
+        FVertex{ .Position = { -0.5f, 0.5f, -0.5f }, .Normal = YNormal, . UV = { 0.0f, 1.0f } },
+        FVertex{ .Position = {  0.5f, 0.5f, -0.5f }, .Normal = YNormal, . UV = { 1.0f, 1.0f } },
+        FVertex{ .Position = {  0.5f, 0.5f,  0.5f }, .Normal = YNormal, . UV = { 1.0f, 0.0f } },
+        FVertex{ .Position = { -0.5f, 0.5f,  0.5f }, .Normal = YNormal, . UV = { 0.0f, 0.0f } },
+
+        // -Y
+        FVertex{.Position = { -0.5f, -0.5f, -0.5f }, .Normal = -YNormal, . UV = { 0.0f, 1.0f } },
+        FVertex{.Position = {  0.5f, -0.5f, -0.5f }, .Normal = -YNormal, . UV = { 1.0f, 1.0f } },
+        FVertex{.Position = {  0.5f, -0.5f,  0.5f }, .Normal = -YNormal, . UV = { 1.0f, 0.0f } },
+        FVertex{.Position = { -0.5f, -0.5f,  0.5f }, .Normal = -YNormal, . UV = { 0.0f, 0.0f } },
+    };
+    CubeGeometry.Indices =
+    {
+        FTriangle{ 0, 1, 2 },
+        FTriangle{ 2, 3, 0 },
+
+        FTriangle{ 4, 5, 6 },
+        FTriangle{ 6, 7, 4 },
+
+        FTriangle{ 8, 9, 10 },
+        FTriangle{ 10, 11, 8 },
+
+        FTriangle{ 12, 13, 14 },
+        FTriangle{ 14, 15, 12 },
+
+        FTriangle{ 16, 17, 18 },
+        FTriangle{ 18, 19, 16 },
+
+        FTriangle{ 20, 21, 22 },
+        FTriangle{ 22, 23, 20 },
+    };
+
+    return CubeGeometry;
 }
 
 std::vector<glm::mat4> GenerateInstances(GLuint InNumInstances)
@@ -616,6 +687,13 @@ FRenderData GetRenderData()
 
         case ESceneType::Cylinder:
             Geo = GenerateCylinder(20);
+            gConfig.Scene.Camera.bIsOrtho = false;
+            gConfig.Scene.PointLight.Position = { 0.0f, 0.0f, 1000.0f };
+            gConfig.Scene.PointLight.Intensity = 1.0f;
+            break;
+
+        case ESceneType::Cube:
+            Geo = GenerateCube();
             gConfig.Scene.Camera.bIsOrtho = false;
             gConfig.Scene.PointLight.Position = { 0.0f, 0.0f, 1000.0f };
             gConfig.Scene.PointLight.Intensity = 1.0f;
