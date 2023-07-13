@@ -136,7 +136,7 @@ struct FSceneConfig
     static constexpr GLuint SphereResolution = 100;
     std::int32_t NumInstances = 500'000;
 
-    SimpleCamera Camera;
+    FSimpleCamera Camera;
     FLight PointLight;
 };
 

@@ -2,10 +2,10 @@
 
 #include <glm/glm.hpp>
 
-class SimpleCamera
+class FSimpleCamera
 {
 public:
-    SimpleCamera();
+    FSimpleCamera();
 
 	void MoveForward(float Scale);
 	void MoveRight(float Scale);

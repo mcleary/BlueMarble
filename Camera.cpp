@@ -3,22 +3,22 @@
 
 #include <glm/ext.hpp>
 
-SimpleCamera::SimpleCamera()
+FSimpleCamera::FSimpleCamera()
 {
     Reset();
 }
 
-void SimpleCamera::MoveForward(float Scale)
+void FSimpleCamera::MoveForward(float Scale)
 {
 	ForwardScale = Scale;
 }
 
-void SimpleCamera::MoveRight(float Scale)
+void FSimpleCamera::MoveRight(float Scale)
 {
 	RightScale = Scale;
 }
 
-void SimpleCamera::MouseMove(float X, float Y)
+void FSimpleCamera::MouseMove(float X, float Y)
 {
 	if (bEnableMouseMovement)
 	{
@@ -41,7 +41,7 @@ void SimpleCamera::MouseMove(float X, float Y)
 	}
 }
 
-void SimpleCamera::Update(float DeltaTime)
+void FSimpleCamera::Update(float DeltaTime)
 {
 	glm::vec3 Right = glm::cross(Direction, Up);
 
@@ -49,7 +49,7 @@ void SimpleCamera::Update(float DeltaTime)
 	Location += Right * RightScale * DeltaTime;
 }
 
-void SimpleCamera::Reset()
+void FSimpleCamera::Reset()
 {
     Location = { 6.0f, 3.0f, 6.0f };
     // Direction = { 0.0f, 0.0f, -1.0f };
@@ -57,7 +57,7 @@ void SimpleCamera::Reset()
     Up = { 0.0f, 1.0f, 0.0f };
 }
 
-void SimpleCamera::SetViewportSize(std::int32_t Width, std::int32_t Height)
+void FSimpleCamera::SetViewportSize(std::int32_t Width, std::int32_t Height)
 {
     AspectRatio = static_cast<float>(Width) / static_cast<float>(Height);
 
@@ -67,12 +67,12 @@ void SimpleCamera::SetViewportSize(std::int32_t Width, std::int32_t Height)
     Top = 1.0f;
 }
 
-glm::mat4 SimpleCamera::GetView()
+glm::mat4 FSimpleCamera::GetView()
 {
 	return glm::lookAt(Location, Location + Direction, Up);
 }
 
-glm::mat4 SimpleCamera::GetProjection()
+glm::mat4 FSimpleCamera::GetProjection()
 {
 	glm::mat4 Projection;
 
