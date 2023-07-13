@@ -1072,9 +1072,9 @@ int main()
     std::cout << "glfw Version    : " << glfwGetVersionString() << std::endl;
     std::cout << "ImGui Version   : " << IMGUI_VERSION << std::endl;
 
-    std::shared_ptr<GLuint> ProgramId = gConfig.Render.ShaderManager.AddShader("triangle.vert", "triangle.frag");
-    std::shared_ptr<GLuint> InstancedProgramId = gConfig.Render.ShaderManager.AddShader("instanced.vert", "instanced.frag");
-    std::shared_ptr<GLuint> AxisProgramId = gConfig.Render.ShaderManager.AddShader("lines.vert", "lines.frag");
+    FShaderPtr ProgramId = gConfig.Render.ShaderManager.AddShader("triangle.vert", "triangle.frag");
+    FShaderPtr InstancedProgramId = gConfig.Render.ShaderManager.AddShader("instanced.vert", "instanced.frag");
+    FShaderPtr AxisProgramId = gConfig.Render.ShaderManager.AddShader("lines.vert", "lines.frag");
 
     FRenderData AxisRenderData = GetAxisRenderData();
     FRenderData GeoRenderData = GetRenderData();
@@ -1106,25 +1106,23 @@ int main()
     const double LoadTexturesEndTime = glfwGetTime();
     std::cout << "Texturas Carregadas em " << (LoadTexturesEndTime - LoadTexturesStartTime) << " segundos" << std::endl;
 
-    GLuint FrameUBO, ModelUBO, LightUBO;
+    GLuint FrameUBO;
     glGenBuffers(1, &FrameUBO);
     glBindBuffer(GL_UNIFORM_BUFFER, FrameUBO);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(FPerFrameData), nullptr, GL_STATIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+    GLuint ModelUBO;
     glGenBuffers(1, &ModelUBO);
     glBindBuffer(GL_UNIFORM_BUFFER, ModelUBO);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(FPerModelData), nullptr, GL_STATIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
+    GLuint LightUBO;
     glGenBuffers(1, &LightUBO);
     glBindBuffer(GL_UNIFORM_BUFFER, LightUBO);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(FLight), nullptr, GL_STATIC_DRAW);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-    glBindBufferRange(GL_UNIFORM_BUFFER, 0, FrameUBO, 0, sizeof(FPerFrameData));
-    glBindBufferRange(GL_UNIFORM_BUFFER, 1, ModelUBO, 0, sizeof(FPerModelData));
-    glBindBufferRange(GL_UNIFORM_BUFFER, 2, LightUBO, 0, sizeof(FLight));
 
     // Configura a cor de fundo
     glClearColor(0.1f, 0.1f, 0.1f, 1.0);
@@ -1194,7 +1192,10 @@ int main()
 
         if (gConfig.Render.bDrawAxis)
         {
-            glUseProgram(*AxisProgramId);
+            glBindBufferRange(GL_UNIFORM_BUFFER, AxisProgramId->UniformBlockBindings["FrameUBO"], FrameUBO, 0, sizeof(FPerFrameData));
+            glBindBufferRange(GL_UNIFORM_BUFFER, AxisProgramId->UniformBlockBindings["ModelUBO"], ModelUBO, 0, sizeof(FPerModelData));
+
+            glUseProgram(AxisProgramId->ProgramId);
 
             const glm::mat4 ModelMatrix = glm::identity<glm::mat4>();
 
@@ -1210,7 +1211,11 @@ int main()
 
         if (gConfig.Render.bDrawObject)
         {
-            glUseProgram(*ProgramId);
+            glBindBufferRange(GL_UNIFORM_BUFFER, ProgramId->UniformBlockBindings["FrameUBO"], FrameUBO, 0, sizeof(FPerFrameData));
+            glBindBufferRange(GL_UNIFORM_BUFFER, ProgramId->UniformBlockBindings["ModelUBO"], ModelUBO, 0, sizeof(FPerModelData));
+            glBindBufferRange(GL_UNIFORM_BUFFER, ProgramId->UniformBlockBindings["LightUBO"], LightUBO, 0, sizeof(FLight));
+
+            glUseProgram(ProgramId->ProgramId);
 
             const glm::mat4 ModelMatrix = GeoRenderData.Transform;
             const glm::mat4 NormalMatrix = glm::transpose(glm::inverse(ModelMatrix));
@@ -1226,10 +1231,10 @@ int main()
             glActiveTexture(GL_TEXTURE1);
             glBindTexture(GL_TEXTURE_2D, CloudsTextureId);
 
-            GLint TextureSamplerLoc = glGetUniformLocation(*ProgramId, "EarthTexture");
+            GLint TextureSamplerLoc = glGetUniformLocation(ProgramId->ProgramId, "EarthTexture");
             glUniform1i(TextureSamplerLoc, 0);
 
-            GLint CloudsTextureSamplerLoc = glGetUniformLocation(*ProgramId, "CloudsTexture");
+            GLint CloudsTextureSamplerLoc = glGetUniformLocation(ProgramId->ProgramId, "CloudsTexture");
             glUniform1i(CloudsTextureSamplerLoc, 1);
 
             glPolygonMode(GL_FRONT_AND_BACK, gConfig.Render.bShowWireframe ? GL_LINE : GL_FILL);
@@ -1240,16 +1245,18 @@ int main()
 
         if (gConfig.Render.bDrawInstances)
         {
+            glBindBufferRange(GL_UNIFORM_BUFFER, InstancedProgramId->UniformBlockBindings["FrameUBO"], FrameUBO, 0, sizeof(FPerFrameData));
+            glBindBufferRange(GL_UNIFORM_BUFFER, InstancedProgramId->UniformBlockBindings["ModelUBO"], ModelUBO, 0, sizeof(FPerModelData));
+
             // Render Instanced Data
-            glUseProgram(*InstancedProgramId);
+            glUseProgram(InstancedProgramId->ProgramId);
 
-            GLint NumInstancesLoc = glGetUniformLocation(*InstancedProgramId, "NumInstances");
-            glUniform1i(NumInstancesLoc, InstRenderData.NumInstances);
+            glUniform1i(InstancedProgramId->UniformLocations["NumInstances"], InstRenderData.NumInstances);
 
-            GLint TextureSamplerLoc = glGetUniformLocation(*InstancedProgramId, "EarthTexture");
+            GLint TextureSamplerLoc = glGetUniformLocation(InstancedProgramId->ProgramId, "EarthTexture");
             glUniform1i(TextureSamplerLoc, 0);
 
-            GLint CloudsTextureSamplerLoc = glGetUniformLocation(*InstancedProgramId, "CloudsTexture");
+            GLint CloudsTextureSamplerLoc = glGetUniformLocation(InstancedProgramId->ProgramId, "CloudsTexture");
             glUniform1i(CloudsTextureSamplerLoc, 1);
 
             glPolygonMode(GL_FRONT_AND_BACK, gConfig.Render.bShowWireframe ? GL_LINE : GL_FILL);

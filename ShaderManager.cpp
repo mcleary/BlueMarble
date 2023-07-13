@@ -90,7 +90,7 @@ bool FShaderManager::IsProgramValid(GLuint InProgramId)
     return true;
 }
 
-bool FShaderManager::CompileAndLink(GLuint InProgramId, const std::filesystem::path& InVertexShaderFile, const std::filesystem::path& InFragmentShaderFile)
+bool FShaderManager::CompileAndLink(GLuint InProgramId, const std::filesystem::path& InVertexShaderFile, const std::filesystem::path& InFragmentShaderFile, std::map<std::string, GLint>& OutUniformLocations,  std::map<std::string, GLint>& OutUniformBlockBindings)
 {
     // Criar os identificadores de cada um dos shaders
     const GLuint VertShaderId = glCreateShader(GL_VERTEX_SHADER);
@@ -128,18 +128,45 @@ bool FShaderManager::CompileAndLink(GLuint InProgramId, const std::filesystem::p
         glDeleteShader(VertShaderId);
         glDeleteShader(FragShaderId);
 
-        constexpr std::array<std::string_view, 3> UBONames = { "FrameUBO", "ModelUBO", "LightUBO" };
-
-        GLint BindingIndex = 0;
-        for (const std::string_view& UBOName : UBONames)
+        if (IsProgramValid(InProgramId))
         {
-            const GLint UBOIndex = glGetUniformBlockIndex(InProgramId, UBOName.data());
-            if (UBOIndex != -1)
+            GLint NumUniforms = 0, MaxUniformNameLength = 0;
+            glGetProgramiv(InProgramId, GL_ACTIVE_UNIFORMS, &NumUniforms);
+            glGetProgramiv(InProgramId, GL_ACTIVE_UNIFORM_MAX_LENGTH, &MaxUniformNameLength);
+
+            for (GLint UniformIndex = 0; UniformIndex < NumUniforms; ++UniformIndex)
             {
-                glUniformBlockBinding(InProgramId, UBOIndex, static_cast<GLint>(BindingIndex++));
+                std::string UniformNameBuffer(MaxUniformNameLength, '\0');
+                GLsizei UniformNameLength = 0;
+                GLint UniformSize = 0;
+                GLenum UniformType;
+                glGetActiveUniform(InProgramId, UniformIndex, MaxUniformNameLength, &UniformNameLength, &UniformSize, &UniformType, UniformNameBuffer.data());
+
+                const std::string UniformName = UniformNameBuffer.substr(0, UniformNameLength);
+                const GLint UniformLoc = glGetUniformLocation(InProgramId, UniformName.c_str());
+
+                OutUniformLocations[UniformName] = UniformLoc;
             }
+
+
+            GLint NumUniformBlocks = 0, MaxUniformBlockNameLength = 0;
+            glGetProgramiv(InProgramId, GL_ACTIVE_UNIFORM_BLOCKS, &NumUniformBlocks);
+            glGetProgramiv(InProgramId, GL_ACTIVE_UNIFORM_BLOCK_MAX_NAME_LENGTH, &MaxUniformBlockNameLength);
+
+            for (GLint UBOIndex = 0; UBOIndex < NumUniformBlocks; ++UBOIndex)
+            {
+                std::string UniformBlockNameBuffer(MaxUniformBlockNameLength, '\0');
+                GLsizei UniformBlockNameLength = 0;
+                glGetActiveUniformBlockName(InProgramId, UBOIndex, MaxUniformBlockNameLength, &UniformBlockNameLength, UniformBlockNameBuffer.data());
+
+                const std::string UniformBlockName = UniformBlockNameBuffer.substr(0, UniformBlockNameLength);
+                glUniformBlockBinding(InProgramId, UBOIndex, UBOIndex);
+
+                OutUniformBlockBindings[UniformBlockName] = UBOIndex;
+            }
+
+            return true;
         }
-        return IsProgramValid(InProgramId);
     }
     else
     {
@@ -157,19 +184,20 @@ bool FShaderManager::CompileAndLink(GLuint InProgramId, const std::filesystem::p
     return false;
 }
 
-std::shared_ptr<GLuint> FShaderManager::AddShader(const std::string& InVertexShaderFile, const std::string& InFragmentShaderFile)
+FShaderPtr FShaderManager::AddShader(const std::string& InVertexShaderFile, const std::string& InFragmentShaderFile)
 {
     const std::filesystem::path AbsoluteVertexShaderFile = std::filesystem::absolute(std::filesystem::path{ ShadersDir } / InVertexShaderFile);
     const std::filesystem::path AbsoluteFragShaderFile = std::filesystem::absolute(std::filesystem::path{ ShadersDir } / InFragmentShaderFile);
 
-    std::shared_ptr<GLuint> ProgramId = std::make_shared<GLuint>(glCreateProgram());
+    FShaderPtr Shader = std::make_shared<FShader>();
+    Shader->ProgramId = glCreateProgram();
 
-    if (CompileAndLink(*ProgramId, AbsoluteVertexShaderFile, AbsoluteFragShaderFile))
+    if (CompileAndLink(Shader->ProgramId, AbsoluteVertexShaderFile, AbsoluteFragShaderFile, Shader->UniformLocations, Shader->UniformBlockBindings))
     {
-        ShaderMap[ProgramId] = { AbsoluteVertexShaderFile, AbsoluteFragShaderFile };
+        ShaderMap[Shader] = { AbsoluteVertexShaderFile, AbsoluteFragShaderFile };
     }
 
-    return ProgramId;
+    return Shader;
 }
 
 void FShaderManager::UpdateShaders()
@@ -181,22 +209,22 @@ void FShaderManager::UpdateShaders()
 
         for (const std::filesystem::path& ShaderFile : ChangedFiles)
         {
-            auto ShaderIt = std::find_if(ShaderMap.begin(), ShaderMap.end(), [ShaderFile](const std::pair<std::shared_ptr<GLuint>, std::pair<std::filesystem::path, std::filesystem::path>>& ShaderMapPair)
+            auto ShaderIt = std::find_if(ShaderMap.begin(), ShaderMap.end(), [ShaderFile](const std::pair<FShaderPtr, std::pair<std::filesystem::path, std::filesystem::path>>& ShaderMapPair)
             {
                 const std::pair<std::filesystem::path, std::filesystem::path>& ShaderFilePair = ShaderMapPair.second;
                 return ShaderFilePair.first == ShaderFile || ShaderFilePair.second == ShaderFile;
             });
             if (ShaderIt != ShaderMap.end())
             {
-                std::shared_ptr<GLuint> ProgramId = ShaderIt->first;
+                FShaderPtr Shader = ShaderIt->first;
                 const std::filesystem::path& VertexShaderFile = ShaderIt->second.first;
                 const std::filesystem::path& FragmentShaderFile = ShaderIt->second.second;
 
                 const GLuint NewProgramid = glCreateProgram();
-                if (CompileAndLink(NewProgramid, VertexShaderFile, FragmentShaderFile))
+                if (CompileAndLink(NewProgramid, VertexShaderFile, FragmentShaderFile, Shader->UniformLocations, Shader->UniformBlockBindings))
                 {
-                    glDeleteProgram(*ProgramId);
-                    *ProgramId = NewProgramid;
+                    glDeleteProgram(Shader->ProgramId);
+                    Shader->ProgramId = NewProgramid;
                 }
             }
         }
