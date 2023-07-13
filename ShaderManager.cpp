@@ -90,26 +90,26 @@ bool FShaderManager::IsProgramValid(GLuint InProgramId)
     return true;
 }
 
-bool FShaderManager::CompileAndLink(GLuint InProgramId, const std::filesystem::path& InVertexShaderFile, const std::filesystem::path& InFragmentShaderFile, std::map<std::string, GLint>& OutUniformLocations,  std::map<std::string, GLint>& OutUniformBlockBindings)
+bool FShaderManager::CompileAndLink(FShaderPtr InShader)
 {
     // Criar os identificadores de cada um dos shaders
     const GLuint VertShaderId = glCreateShader(GL_VERTEX_SHADER);
     const GLuint FragShaderId = glCreateShader(GL_FRAGMENT_SHADER);
 
-    const std::string VertexShaderSource = ReadFile(InVertexShaderFile.string());
-    const std::string FragmentShaderSource = ReadFile(InFragmentShaderFile.string());
+    const std::string VertexShaderSource = ReadFile(InShader->VertexShaderFilePath);
+    const std::string FragmentShaderSource = ReadFile(InShader->FragmentShaderFilePath);
 
     if (VertexShaderSource.empty() || FragmentShaderSource.empty())
     {
         return false;
     }
 
-    std::cout << "Compilando " << InVertexShaderFile << std::endl;
+    std::cout << "Compilando " << InShader->VertexShaderFilePath << std::endl;
     const char* VertexShaderSourcePtr = VertexShaderSource.c_str();
     glShaderSource(VertShaderId, 1, &VertexShaderSourcePtr, nullptr);
     glCompileShader(VertShaderId);
 
-    std::cout << "Compilando " << InFragmentShaderFile << std::endl;
+    std::cout << "Compilando " << InShader->FragmentShaderFilePath << std::endl;
     const char* FragmentShaderSourcePtr = FragmentShaderSource.c_str();
     glShaderSource(FragShaderId, 1, &FragmentShaderSourcePtr, nullptr);
     glCompileShader(FragShaderId);
@@ -117,22 +117,27 @@ bool FShaderManager::CompileAndLink(GLuint InProgramId, const std::filesystem::p
     std::string VertexShaderInfoLog, FragmentShaderInfoLog;
     if (IsShaderValid(VertShaderId, VertexShaderInfoLog) && IsShaderValid(FragShaderId, FragmentShaderInfoLog))
     {
-        std::cout << "Linkando Programa" << std::endl;
-        glAttachShader(InProgramId, VertShaderId);
-        glAttachShader(InProgramId, FragShaderId);
-        glLinkProgram(InProgramId);
+        const GLint ProgramId = glCreateProgram();
 
-        glDetachShader(InProgramId, VertShaderId);
-        glDetachShader(InProgramId, FragShaderId);
+        std::cout << "Linkando Programa" << std::endl;
+        glAttachShader(ProgramId, VertShaderId);
+        glAttachShader(ProgramId, FragShaderId);
+        glLinkProgram(ProgramId);
+
+        glDetachShader(ProgramId, VertShaderId);
+        glDetachShader(ProgramId, FragShaderId);
 
         glDeleteShader(VertShaderId);
         glDeleteShader(FragShaderId);
 
-        if (IsProgramValid(InProgramId))
+        if (IsProgramValid(ProgramId))
         {
             GLint NumUniforms = 0, MaxUniformNameLength = 0;
-            glGetProgramiv(InProgramId, GL_ACTIVE_UNIFORMS, &NumUniforms);
-            glGetProgramiv(InProgramId, GL_ACTIVE_UNIFORM_MAX_LENGTH, &MaxUniformNameLength);
+            glGetProgramiv(ProgramId, GL_ACTIVE_UNIFORMS, &NumUniforms);
+            glGetProgramiv(ProgramId, GL_ACTIVE_UNIFORM_MAX_LENGTH, &MaxUniformNameLength);
+
+            InShader->UniformBlockBindings.clear();
+            InShader->UniformLocations.clear();
 
             for (GLint UniformIndex = 0; UniformIndex < NumUniforms; ++UniformIndex)
             {
@@ -140,30 +145,32 @@ bool FShaderManager::CompileAndLink(GLuint InProgramId, const std::filesystem::p
                 GLsizei UniformNameLength = 0;
                 GLint UniformSize = 0;
                 GLenum UniformType;
-                glGetActiveUniform(InProgramId, UniformIndex, MaxUniformNameLength, &UniformNameLength, &UniformSize, &UniformType, UniformNameBuffer.data());
+                glGetActiveUniform(ProgramId, UniformIndex, MaxUniformNameLength, &UniformNameLength, &UniformSize, &UniformType, UniformNameBuffer.data());
 
                 const std::string UniformName = UniformNameBuffer.substr(0, UniformNameLength);
-                const GLint UniformLoc = glGetUniformLocation(InProgramId, UniformName.c_str());
+                const GLint UniformLoc = glGetUniformLocation(ProgramId, UniformName.c_str());
 
-                OutUniformLocations[UniformName] = UniformLoc;
+                InShader->UniformLocations[UniformName] = UniformLoc;
             }
 
 
             GLint NumUniformBlocks = 0, MaxUniformBlockNameLength = 0;
-            glGetProgramiv(InProgramId, GL_ACTIVE_UNIFORM_BLOCKS, &NumUniformBlocks);
-            glGetProgramiv(InProgramId, GL_ACTIVE_UNIFORM_BLOCK_MAX_NAME_LENGTH, &MaxUniformBlockNameLength);
+            glGetProgramiv(ProgramId, GL_ACTIVE_UNIFORM_BLOCKS, &NumUniformBlocks);
+            glGetProgramiv(ProgramId, GL_ACTIVE_UNIFORM_BLOCK_MAX_NAME_LENGTH, &MaxUniformBlockNameLength);
 
             for (GLint UBOIndex = 0; UBOIndex < NumUniformBlocks; ++UBOIndex)
             {
                 std::string UniformBlockNameBuffer(MaxUniformBlockNameLength, '\0');
                 GLsizei UniformBlockNameLength = 0;
-                glGetActiveUniformBlockName(InProgramId, UBOIndex, MaxUniformBlockNameLength, &UniformBlockNameLength, UniformBlockNameBuffer.data());
+                glGetActiveUniformBlockName(ProgramId, UBOIndex, MaxUniformBlockNameLength, &UniformBlockNameLength, UniformBlockNameBuffer.data());
 
                 const std::string UniformBlockName = UniformBlockNameBuffer.substr(0, UniformBlockNameLength);
-                glUniformBlockBinding(InProgramId, UBOIndex, UBOIndex);
+                glUniformBlockBinding(ProgramId, UBOIndex, UBOIndex);
 
-                OutUniformBlockBindings[UniformBlockName] = UBOIndex;
+                InShader->UniformBlockBindings[UniformBlockName] = UBOIndex;
             }
+
+            InShader->ProgramId = ProgramId;
 
             return true;
         }
@@ -172,12 +179,12 @@ bool FShaderManager::CompileAndLink(GLuint InProgramId, const std::filesystem::p
     {
         if (!VertexShaderInfoLog.empty())
         {
-            FailureLogs[InVertexShaderFile] = VertexShaderInfoLog;
+            FailureLogs[InShader->VertexShaderFilePath] = VertexShaderInfoLog;
         }
 
         if (!FragmentShaderSource.empty())
         {
-            FailureLogs[InFragmentShaderFile] = FragmentShaderInfoLog;
+            FailureLogs[InShader->FragmentShaderFilePath] = FragmentShaderInfoLog;
         }
     }
 
@@ -190,11 +197,12 @@ FShaderPtr FShaderManager::AddShader(const std::string& InVertexShaderFile, cons
     const std::filesystem::path AbsoluteFragShaderFile = std::filesystem::absolute(std::filesystem::path{ ShadersDir } / InFragmentShaderFile);
 
     FShaderPtr Shader = std::make_shared<FShader>();
-    Shader->ProgramId = glCreateProgram();
+    Shader->VertexShaderFilePath = AbsoluteVertexShaderFile;
+    Shader->FragmentShaderFilePath = AbsoluteFragShaderFile;
 
-    if (CompileAndLink(Shader->ProgramId, AbsoluteVertexShaderFile, AbsoluteFragShaderFile, Shader->UniformLocations, Shader->UniformBlockBindings))
+    if (CompileAndLink(Shader))
     {
-        ShaderMap[Shader] = { AbsoluteVertexShaderFile, AbsoluteFragShaderFile };
+        Shaders.push_back(Shader);
     }
 
     return Shader;
@@ -209,22 +217,18 @@ void FShaderManager::UpdateShaders()
 
         for (const std::filesystem::path& ShaderFile : ChangedFiles)
         {
-            auto ShaderIt = std::find_if(ShaderMap.begin(), ShaderMap.end(), [ShaderFile](const std::pair<FShaderPtr, std::pair<std::filesystem::path, std::filesystem::path>>& ShaderMapPair)
+            auto ShaderIt = std::find_if(Shaders.begin(), Shaders.end(), [ShaderFile](FShaderPtr Shader)
             {
-                const std::pair<std::filesystem::path, std::filesystem::path>& ShaderFilePair = ShaderMapPair.second;
-                return ShaderFilePair.first == ShaderFile || ShaderFilePair.second == ShaderFile;
+                return Shader->VertexShaderFilePath == ShaderFile || Shader->FragmentShaderFilePath == ShaderFile;
             });
-            if (ShaderIt != ShaderMap.end())
+            if (ShaderIt != Shaders.end())
             {
-                FShaderPtr Shader = ShaderIt->first;
-                const std::filesystem::path& VertexShaderFile = ShaderIt->second.first;
-                const std::filesystem::path& FragmentShaderFile = ShaderIt->second.second;
+                FShaderPtr Shader = *ShaderIt;
 
-                const GLuint NewProgramid = glCreateProgram();
-                if (CompileAndLink(NewProgramid, VertexShaderFile, FragmentShaderFile, Shader->UniformLocations, Shader->UniformBlockBindings))
+                const GLint PreviousProgramId = Shader->ProgramId;
+                if (CompileAndLink(Shader))
                 {
-                    glDeleteProgram(Shader->ProgramId);
-                    Shader->ProgramId = NewProgramid;
+                    glDeleteProgram(PreviousProgramId);
                 }
             }
         }

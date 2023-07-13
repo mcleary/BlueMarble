@@ -11,6 +11,8 @@
 struct FShader
 {
     GLint ProgramId;
+    std::filesystem::path VertexShaderFilePath;
+    std::filesystem::path FragmentShaderFilePath;
     std::map<std::string, GLint> UniformBlockBindings;
     std::map<std::string, GLint> UniformLocations;
 };
@@ -33,13 +35,11 @@ private:
 
     bool IsProgramValid(GLuint InProgramId);
 
-    bool CompileAndLink(GLuint InProgramId, const std::filesystem::path& InVertexShaderFile, const std::filesystem::path& InFragmentShaderFile, std::map<std::string, GLint>& OutUniformLocations, std::map<std::string, GLint>& OutUniformBlockBindings);
+    bool CompileAndLink(FShaderPtr InShader);
 
 private:
     static constexpr std::string_view ShadersDir = "../../../shaders";
     FDirectoryWatcher DirWatcher{ ShadersDir };
-    // std::map<std::
-
-    std::map<FShaderPtr, std::pair<std::filesystem::path, std::filesystem::path>> ShaderMap;
+    std::vector<FShaderPtr> Shaders;
     std::map<std::filesystem::path, std::string> FailureLogs;
 };
