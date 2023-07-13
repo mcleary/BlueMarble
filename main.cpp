@@ -1145,14 +1145,7 @@ int main()
 
         glfwSwapInterval(gConfig.Render.bEnableVsync);
 
-        if (gConfig.Render.bCullFace)
-        {
-            glEnable(GL_CULL_FACE);
-        }
-        else
-        {
-            glDisable(GL_CULL_FACE);
-        }
+        gConfig.Render.bCullFace ? glEnable(GL_CULL_FACE) : glDisable(GL_CULL_FACE);
 
         const double CurrentTime = glfwGetTime();
         gConfig.Simulation.ApplicationTime = CurrentTime;
